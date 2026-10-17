@@ -58,11 +58,66 @@ curl localhost:8000/health
 | Granite runs locally, not a cloud LLM | Patient data never leaves LinuxONE. Granite only explains the model's decision and never changes the numbers. |
 
 ## Results
-See `artifacts/metrics.json` and the `fig_*.png` charts. Includes C-index, AUC, calibration, doctors vs model, "days earlier" (an imperfect proxy) and the fairness audit.
+
+All numbers are on **1,821 held-out test patients** the model never saw during training. They're reproduced on the IBM z17 (LinuxONE), where the full training run takes about 2 seconds. Full output is in `artifacts/metrics.json`, `artifacts/fairness.csv` and the `fig_*.png` charts.
+
+### The problem, in the data
+Of **4,265** seriously ill patients who died within 6 months:
+- **37%** never had a do-not-resuscitate (DNR) decision recorded
+- **35%** had it recorded only in their **final 7 days** of life
+- the median gap between the DNR decision and death was **5 days**
+
+So **72%** of these patients either never had the decision recorded or had it only in their last week. A DNR order is our stand-in for a care-planning conversation, not the same thing.
+
+### Model performance
+
+| Measure | Result | In plain words |
+|---|---|---|
+| AUC, death within 6 months | **0.813** | 81% of the time, it ranks a patient who died above one who survived |
+| C-index (over time) | 0.736 | Ranking quality across the whole follow-up |
+| Calibration error | **2.4 percentage points** | When it says 60% risk, the real rate is close to 60% |
+| XGBoost second opinion, AUC | 0.813 | An independent model agrees |
+
+### Decision tiers: share who actually died within 6 months
+
+| Recommendation | Patients | Died within 6 months |
+|---|---|---|
+| Conversation due now | 571 | **80%** |
+| Clinician judgement (model unsure) | 141 (8%) | 50% |
+| Review in 2 weeks | 371 | 47% |
+| No action | 738 | **20%** |
+
+"Due now", "review" and "clinician judgement" together reach **83%** of patients who died within 6 months.
+
+### AI + clinician: better together
+Tested on the 1,497 test patients whose doctor gave a survival estimate:
+
+| | AUC | Deaths caught when each flags the same 763 patients |
+|---|---|---|
+| Doctor's estimate alone | 0.786 | 524 of 710 |
+| TimeToTalk alone | 0.804 | 538 of 710 |
+| **Doctor + TimeToTalk** | **0.833** | **560 of 710** |
+
+TimeToTalk matches experienced doctors from routine day-3 data, and **combining the two beats either alone**. With the same workload, the combination catches **36 more** of the patients who died than doctors alone. The two make different mistakes, so the tool sharpens clinical judgement rather than replacing it. (The combination weights are fit on validation data. A simple 50/50 average gives 0.831, from `ml/combo.py`.)
+
+### Fairness audit (test set)
+
+| Group | AUC | Share of deaths flagged |
+|---|---|---|
+| Age <50 / 50–64 / 65–79 / 80+ | 0.84 / 0.80 / 0.78 / 0.85 | 66% / 71% / 76% / 85% |
+| Female / male | 0.82 / 0.81 | 72% / 77% |
+| Black / Hispanic / white | 0.82 / 0.81 / 0.81 | 66% / 52%* / 76% |
+
+Ranking accuracy is similar across groups, and predicted risk matches observed risk within each group. The model **flags a smaller share of deaths among younger patients and Black and Hispanic patients**. (*There are only 57 Hispanic test patients, so that figure is unreliable.) A hospital would need to monitor this before using the tool. It's listed under next steps.
+
+### What did *not* hold up (reported honestly)
+- **"Doctors are too optimistic":** not true in this data. Doctors' average 6-month survival estimate (50%) was close to reality (53%).
+- **"Flags patients days earlier":** compared with when the DNR was written, the median is only 1 day earlier, so we don't claim it.
 
 ## Limitations & next steps
 - SUPPORT2 is 1989–94 US data. This is a proof of concept. Next step: retrain and validate on Singapore hospital records.
 - Repeated measurements per patient → a real "risk is rising" trigger
+- Close the fairness gap in how many deaths are flagged for younger and minority patients, e.g. group-aware thresholds, checked on local data
 - Clinical pilot with the palliative care team, and link with Singapore's national advance care planning programme
 - Fine-tune Granite on local care-planning guidance in the four official languages
 
