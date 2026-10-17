@@ -6,6 +6,30 @@
   <span class="mode">Scoring: {{ mode }}</span>
 </div>
 
+<section class="card system" aria-labelledby="sys">
+  <h2 id="sys">System</h2>
+  {% if system.error %}
+    <p class="alert">{{ system.error }}</p>
+  {% else %}
+  <dl class="sysfacts">
+    <div><dt>Machine</dt><dd>{{ system.machine }}</dd></div>
+    <div><dt>Bootstrap models</dt><dd>{{ system.bootstraps }}</dd></div>
+    <div><dt>Second-opinion model</dt><dd>{{ "loaded" if system.second_opinion else "not loaded" }}</dd></div>
+    <div><dt>Granite</dt><dd>{{ "connected" if system.granite else "not connected" }}</dd></div>
+  </dl>
+  <p><strong>{% if system.linuxone %}All inference runs on this LinuxONE VM.{% else %}Running on {{ system.machine }}, not LinuxONE.{% endif %}</strong></p>
+  {% endif %}
+  <form class="inline" method="post" action="/benchmark">
+    <input type="hidden" name="csrf" value="{{ s.csrf }}">
+    <button type="submit">Benchmark {{ bench_n }} patients</button>
+    {% if bench %}
+      {% if bench.error %}<span class="alert">{{ bench.error }}</span>
+      {% else %}<span><strong>{{ "{:,.0f}".format(bench.per_s) }} patients per second</strong>
+        <span class="muted">({{ "%.2f" | format(bench.ms) }} ms each, n = {{ bench.n }}, on {{ bench.where }})</span></span>{% endif %}
+    {% endif %}
+  </form>
+</section>
+
 <div class="summary">
   {% for d in decisions %}
   <a class="stat {{ info[d][0] }}{% if decision == d %} active{% endif %}" href="/?decision={{ d | urlencode }}">

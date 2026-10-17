@@ -33,9 +33,12 @@ podman ps         # is the IBM lab's Jupyter container running? (it uses memory)
 **1a. Code.** Clone the first time; after that, just pull.
 ```bash
 cd ~
-[ -d terrabyte_ibm_2026 ] && git -C terrabyte_ibm_2026 pull || git clone https://github.com/Chloe22204/terrabyte_ibm_2026
+if [ -d terrabyte_ibm_2026 ]; then git -C terrabyte_ibm_2026 pull; else git clone https://github.com/Chloe22204/terrabyte_ibm_2026; fi
 cd ~/terrabyte_ibm_2026
 ```
+If the pull says *"untracked working tree files would be overwritten"* (usually `artifacts/` from an earlier training run), move them aside and pull again: `mv artifacts ~/artifacts_vm_old && git pull`. Step 2 regenerates them.
+
+**Don't commit `artifacts/` from the VM.** Retraining changes those files. Run `git checkout -- artifacts` before your next pull, or the pull will complain again.
 
 **1b. Python packages.** The VM runs Ubuntu with Python 3.12, which blocks `pip install` into the system Python (`externally-managed-environment`). So:
 - install the heavy science packages with **apt**, because they're prebuilt for s390x and need no compiling
@@ -76,9 +79,14 @@ Granite is IBM's open LLM. We run it with **llama.cpp**, and it never leaves the
 # RHEL:   sudo dnf install -y git cmake gcc-c++ make python3-pip
 # Ubuntu: sudo apt update && sudo apt install -y git cmake g++ make python3-pip
 cd ~ && git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
+# Our VM is a z17. llama.cpp compiles for it with -march=arch15, which Ubuntu's GCC 13 doesn't know
+# ("unrecognized argument in option '-march=arch15'"). Target z16 instead; z17 runs z16 code fine.
+sed -i 's/-march=arch15/-march=z16/' ggml/src/ggml-cpu/CMakeLists.txt
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF
-cmake --build build -j2 --target llama-server llama-cli
+nohup cmake --build build -j2 --target llama-server llama-cli > ~/build.log 2>&1 &
+tail -f ~/build.log          # Ctrl+C stops watching; the build keeps going
 ```
+If it fails, `tail -30 ~/build.log` shows the error. After any fix, `rm -rf build` and run the two `cmake` lines again.
 ✅ `ls ~/llama.cpp/build/bin/` lists `llama-server` and `llama-cli`.
 
 **3b. Download Granite 3.3 2B** (5–10 min, about 2.7 GB)
@@ -92,16 +100,22 @@ ls -lh ~/models
 If the file name differs, pick the **Q8_0** file from https://huggingface.co/ibm-granite/granite-3.3-2b-instruct-GGUF.
 
 **3c. Convert the model to big-endian.** LinuxONE stores numbers in the opposite byte order to laptops, so the model file has to be converted.
+The converter needs **NumPy 2.1 or newer**. Ubuntu's NumPy is 1.26 and is used by the training venv, so give the converter its own small venv:
 ```bash
+python3 -m venv ~/gguf-venv
+~/gguf-venv/bin/pip install "numpy>=2.1" tqdm pyyaml
 cd ~/models
 cp granite-3.3-2b-instruct-Q8_0.gguf granite-be.gguf       # the script edits the file in place
-python3 ~/llama.cpp/gguf-py/gguf/scripts/gguf_convert_endian.py granite-be.gguf big
+~/gguf-venv/bin/python ~/llama.cpp/gguf-py/gguf/scripts/gguf_convert_endian.py granite-be.gguf big
 ```
+`TypeError: 'copy' is an invalid keyword argument` means you ran it with the old NumPy. Recopy the file (it's now half-converted) and use `~/gguf-venv/bin/python`.
+It warns that the file may be damaged and asks you to confirm. Type **`YES`** and press Enter. This is safe because you're converting the copy. Takes 1–2 minutes; don't interrupt it. If it fails, recopy the original and run it again.
 
 **3d. Quick test**
 ```bash
-~/llama.cpp/build/bin/llama-cli -m ~/models/granite-be.gguf -p "In one sentence, what is advance care planning?" -n 60 -no-cnv
+~/llama.cpp/build/bin/llama-cli -m ~/models/granite-be.gguf -p "In one sentence, what is advance care planning?" -n 60
 ```
+Loading takes 10–60 s, then it shows a llama.cpp banner and starts answering word by word. Newer llama-cli is a chat program: when it finishes, it waits at a `>` prompt. Type `/exit` (or Ctrl+C) to quit. **Screenshot the answer** for the video.
 ✅ A sensible sentence. An error mentioning "magic", "version" or "tensor type", or garbage text, means the byte order is wrong: redo 3c.
 
 **3e. Run Granite as a local server** (leave it running)
@@ -120,7 +134,7 @@ From the repo folder:
 ```bash
 cd ~/terrabyte_ibm_2026
 python3 genai/prep_sheet.py --no-llm                      # template only: checks scoring + retrieval
-python3 genai/prep_sheet.py                               # with Granite: takes ~30-90 s
+python3 genai/prep_sheet.py                               # with Granite: ~1.5-2 min (reads ~15, writes ~4.7 tokens/s)
 python3 genai/prep_sheet.py --language Chinese
 python3 genai/prep_sheet.py --language Malay
 python3 genai/prep_sheet.py --language Tamil

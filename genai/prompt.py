@@ -37,9 +37,10 @@ TASK
 Write a one-page conversation prep sheet in {language} with these headings:
 1. Why now (2-3 sentences, refer to the main factors in plain words)
 2. Before you go in (who should be present, what to check in the notes)
-3. Questions to explore (4-5 open questions about understanding, goals, fears, what matters most)
+3. Questions to explore (3-4 open questions about understanding, goals, fears, what matters most)
 4. Phrases to avoid
 5. Next step to record in the care plan
+Use short bullet points and keep the whole sheet under 200 words.
 If the recommendation is "Clinician judgement", start by saying the model is uncertain and the \
 clinician's own assessment should lead."""
 

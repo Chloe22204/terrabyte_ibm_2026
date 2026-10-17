@@ -9,7 +9,8 @@ Two ways to reach Granite (pick with TTT_LLM_BACKEND):
 Env vars:
   TTT_LLM_URL       default http://127.0.0.1:8080/v1/chat/completions
   TTT_GRANITE_GGUF  model path for the python backend, default ~/models/granite-be.gguf
-  TTT_LLM_TIMEOUT   seconds, default 180 (3 vCPUs are slow; a prep sheet takes ~30-90 s)
+  TTT_LLM_TIMEOUT   seconds, default 300 (measured on our 3-vCPU z17: reads ~15 tokens/s, writes ~4.7 tokens/s,
+                    so a prep sheet takes ~1.5-2 min)
 
 Only the standard library is needed for the server backend, so the API container stays small.
 """
@@ -18,7 +19,7 @@ import json, os, urllib.error, urllib.request
 BACKEND = os.environ.get("TTT_LLM_BACKEND", "server")
 URL = os.environ.get("TTT_LLM_URL", "http://127.0.0.1:8080/v1/chat/completions")
 GGUF = os.environ.get("TTT_GRANITE_GGUF", os.path.expanduser("~/models/granite-be.gguf"))
-TIMEOUT = float(os.environ.get("TTT_LLM_TIMEOUT", "180"))
+TIMEOUT = float(os.environ.get("TTT_LLM_TIMEOUT", "300"))
 
 _llama = None
 

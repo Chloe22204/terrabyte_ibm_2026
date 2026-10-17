@@ -8,7 +8,7 @@
     <h1>Patient <span class="mono">{{ p.ref }}</span></h1>
     <p class="muted">{{ p.age }}-year-old {{ p.sex }} · {{ p.dz }}</p>
   </div>
-  <span class="mode">{% if live %}Scored live: {{ mode }}{% else %}Precomputed result (live scoring unavailable){% endif %}</span>
+  <span class="mode">{% if live %}Scored live: {{ mode }} · {{ "%.1f" | format(score_ms) }} ms{% else %}Precomputed result (live scoring unavailable){% endif %}</span>
 </div>
 
 <section class="decision {{ info[0] }}">
@@ -40,25 +40,54 @@
     </dl>
   </section>
 
-  <section class="card{% if p.gap_flag %} warn{% endif %}">
-    <h2>Doctor's estimate vs model</h2>
-    {% if p.doctor_surv is none %}
-      <p class="muted">No doctor's survival estimate recorded for this patient.</p>
+  <section class="card{% if doc.gap_flag %} warn{% endif %}" id="doctor">
+    <h2>Doctor's estimate + TimeToTalk</h2>
+    {% if doc.surv is none %}
+      <p class="muted">{% if doc.source == "none" %}Estimate cleared.{% else %}No doctor's survival estimate recorded for this patient.{% endif %}
+        Enter yours below to compare it with the model.</p>
     {% else %}
-      <dl class="facts">
-        <dt>Doctor's 6-month survival estimate</dt><dd>{{ (p.doctor_surv * 100) | round | int }}%</dd>
-        <dt>Model's 6-month survival</dt><dd>{{ ((1 - p.risk) * 100) | round | int }}%</dd>
-      </dl>
-      {% if p.gap_flag %}
-      <p class="flag">The recorded estimate is {{ (p.gap * 100) | round | int }} points more optimistic than the model.
+      <p class="small muted">{% if doc.source == "recorded" %}The treating doctor's recorded estimate.{% else %}Your estimate.{% endif %}
+        All three bars are 6-month mortality risk.</p>
+      <svg class="cmp" viewBox="0 0 420 96" role="img"
+        aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
+        {% for key, label, v in [("doctor", "Doctor", doc.risk), ("model", "TimeToTalk", r.risk_6m), ("combined", "Combined", doc.combined)] %}
+        {% set y = loop.index0 * 32 %}
+        <text class="lbl" x="0" y="{{ y + 17 }}">{{ label }}</text>
+        <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="3"/>
+        <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="3"/>
+        <text class="val" x="420" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
+        {% endfor %}
+      </svg>
+      {% if doc.gap_flag %}
+      <p class="flag">This estimate is {{ (doc.gap * 100) | round | int }} points more optimistic than the model.
         Optimistic estimates are a common reason conversations happen late. Consider reviewing the prognosis
         with the team.</p>
-      {% else %}
-      <p class="muted">The two estimates are broadly consistent.</p>
       {% endif %}
-      <p class="small muted">On held-out patients, combining the doctor's estimate with the model ranked
-        patients better (AUC 0.833) than either the doctor (0.786) or the model (0.804) alone.</p>
+      <p class="small muted">Combined = average of the doctor's and the model's 6-month risk. On 1,497 held-out
+        patients: doctor alone AUC 0.786, model 0.804, together 0.833.</p>
     {% endif %}
+    <form class="inline" method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+      <input type="hidden" name="csrf" value="{{ s.csrf }}">
+      <label>Your estimate: chance alive in 6 months (%)
+        <input type="number" name="doctor" min="0" max="100" step="1" required
+          value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
+      </label>
+      <button type="submit">Compare</button>
+    </form>
+    <div class="actions">
+      {% if p.doctor_surv is not none and doc.source != "recorded" %}
+      <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+        <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="recorded">
+        <button class="link" type="submit">Use recorded estimate</button>
+      </form>
+      {% endif %}
+      {% if doc.surv is not none %}
+      <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+        <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="none">
+        <button class="link" type="submit">Clear</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
 
   <section class="card">
@@ -102,6 +131,7 @@
     care-planning guideline notes. Nothing leaves the server. Can take up to 90 seconds.</p>
   <form class="inline" method="post" action="/patient/{{ p.ref }}/briefing#briefing">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
+    <input type="hidden" name="doctor" value="{{ doc.field }}">
     <label>Language
       <select name="language">
         {% for l in languages %}<option{% if l == language %} selected{% endif %}>{{ l }}</option>{% endfor %}
@@ -135,6 +165,7 @@
   <p class="small muted">Ask about this patient's result. Answers use only the model's output above.</p>
   <form method="post" action="/patient/{{ p.ref }}/why#why">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
+    <input type="hidden" name="doctor" value="{{ doc.field }}">
     <label for="question">Question</label>
     <textarea id="question" name="question" required maxlength="{{ max_question }}" rows="2"
       placeholder="e.g. Why is the risk so high when blood pressure is normal?">{{ question }}</textarea>
