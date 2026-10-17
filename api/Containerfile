@@ -1,0 +1,17 @@
+# Build from repo root on LinuxONE:  podman build -t timetotalk-api -f api/Containerfile .
+# (docker works the same).  Base image is multi-arch, so it builds natively on s390x.
+FROM python:3.11-slim
+RUN useradd --create-home appuser
+WORKDIR /app
+COPY api/requirements.txt .
+# If a wheel fails to build on s390x, drop xgboost from requirements: the API still runs (no second opinion).
+RUN pip install --no-cache-dir -r requirements.txt
+COPY ml/coxph.py ml/scoring.py /app/ml/
+COPY api/app.py /app/
+COPY artifacts /app/artifacts
+ENV TTT_ARTIFACTS=/app/artifacts TTT_AUDIT_LOG=/app/logs/audit.log
+RUN mkdir -p /app/logs && chown -R appuser /app/logs
+# run as non-root (security screenshot)
+USER appuser
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

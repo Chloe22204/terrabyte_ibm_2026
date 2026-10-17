@@ -1,0 +1,5 @@
+data/*.csv
+artifacts/bootstraps/
+__pycache__/
+*.log
+.env

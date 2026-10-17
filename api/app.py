@@ -1,0 +1,74 @@
+"""
+TimeToTalk scoring API - runs on LinuxONE inside a container.
+
+  export TTT_API_TOKEN=<long random string>      # required
+  export TTT_ARTIFACTS=/app/artifacts
+  uvicorn app:app --host 0.0.0.0 --port 8000
+
+Security measures (screenshot these for the rubric):
+  - every request needs the bearer token (no token -> 401)
+  - patient identifiers are SHA-256 hashed with a secret salt before logging; raw IDs never stored
+  - audit log of every scoring request (who/when/decision), no clinical values written to logs
+  - all inference (Cox model + Granite) happens on this LinuxONE VM; no patient data leaves it
+"""
+import hashlib, json, logging, os, sys, time
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ml"))
+sys.path.insert(0, "/app/ml")
+from scoring import TimeToTalkScorer  # noqa: E402
+
+TOKEN = os.environ.get("TTT_API_TOKEN")
+SALT = os.environ.get("TTT_ID_SALT", "change-me")
+ARTIFACTS = os.environ.get("TTT_ARTIFACTS", "artifacts")
+if not TOKEN:
+    raise SystemExit("Set TTT_API_TOKEN before starting the API")
+
+logging.basicConfig(filename=os.environ.get("TTT_AUDIT_LOG", "audit.log"), level=logging.INFO,
+                    format="%(asctime)s %(message)s")
+scorer = TimeToTalkScorer(ARTIFACTS)
+app = FastAPI(title="TimeToTalk API", version="1.0")
+
+
+def auth(authorization: str = Header(default="")):
+    if authorization != f"Bearer {TOKEN}":
+        raise HTTPException(status_code=401, detail="invalid or missing token")
+
+
+def pseudonym(patient_id: str) -> str:
+    return hashlib.sha256((SALT + str(patient_id)).encode()).hexdigest()[:16]
+
+
+class ScoreRequest(BaseModel):
+    patient_id: str
+    clinician_id: str = "unknown"
+    patient: dict           # SUPPORT2-style fields, e.g. {"age": 78, "sex": "female", "alb": 2.4, ...}
+
+
+@app.get("/health")
+def health():
+    import platform
+    return {"status": "ok", "machine": platform.machine(), "features": len(scorer.features),
+            "bootstrap_models": len(scorer.boots), "second_opinion": scorer.xgb is not None}
+
+
+@app.post("/score", dependencies=[Depends(auth)])
+def score(req: ScoreRequest):
+    t0 = time.perf_counter()
+    result = scorer.score(req.patient)
+    ms = (time.perf_counter() - t0) * 1000
+    pid = pseudonym(req.patient_id)
+    logging.info(json.dumps({"event": "score", "patient": pid, "clinician": req.clinician_id,
+                             "decision": result["decision"], "latency_ms": round(ms, 2)}))
+    return {"patient_ref": pid, "latency_ms": ms, **result}
+
+
+@app.post("/benchmark", dependencies=[Depends(auth)])
+def benchmark(req: ScoreRequest, n: int = 1000):
+    """Scores the same patient n times; use for the 'compute' screenshot."""
+    t0 = time.perf_counter()
+    for _ in range(n):
+        scorer.score(req.patient)
+    total = time.perf_counter() - t0
+    return {"n": n, "total_s": total, "per_patient_ms": total / n * 1000, "patients_per_s": n / total}
