@@ -32,8 +32,8 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
 python ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
 # 3. optional: accelerator second-opinion model
 python ml/accelerator_model.py --data data/support2.csv --out artifacts
-# 4. API in a container
-podman build -t timetotalk-api -f api/Containerfile .
+# 4. API in a container (Containerfile.ubuntu: python:3.11-slim has no s390x numpy wheel, so we use Ubuntu's s390x packages)
+podman build -t timetotalk-api -f api/Containerfile.ubuntu .
 podman run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=$(openssl rand -hex 24) -e TTT_ID_SALT=$(openssl rand -hex 16) timetotalk-api
 curl localhost:8000/health
 ```
