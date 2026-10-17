@@ -123,3 +123,22 @@ textarea { display: block; width: 100%; font: inherit; color: var(--text); backg
   border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; resize: vertical; }
 .sheetmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0 6px; }
 #why { margin-top: 16px; }
+
+/* doctor's estimate + TimeToTalk */
+.cmp { width: 100%; max-width: 440px; margin: 4px 0 8px; }
+.cmp .lbl, .cmp .val { fill: var(--text); font-size: 13px; }
+.cmp .val { font-weight: 700; }
+.cmp .track { fill: var(--bg); }
+.cmp .doctor { fill: var(--muted); }
+.cmp .model { fill: var(--accent); }
+.cmp .combined { fill: var(--text); }
+.actions { display: flex; gap: 16px; margin-top: 8px; }
+.actions form { margin: 0; }
+#doctor form.inline input { width: 7em; display: block; margin-top: 4px; }
+
+/* system panel */
+.sysfacts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0 0 8px; }
+.sysfacts dt { color: var(--muted); font-size: 0.8rem; }
+.sysfacts dd { margin: 0; font-weight: 600; }
+.system p { margin: 0 0 10px; }
+.system form.inline { align-items: center; }

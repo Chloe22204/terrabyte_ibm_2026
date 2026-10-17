@@ -6,9 +6,13 @@ no s390x build.
 
 ## Pages
 - **Worklist**: test-set patients sorted by priority (Due now → Clinician judgement → Review → No action),
-  filters by decision / diagnosis / optimism gap, counts per decision.
+  filters by decision / diagnosis / optimism gap, counts per decision. A **System** panel shows where
+  inference runs (machine, bootstrap models, second opinion, Granite) and a **Benchmark** button
+  scores one patient 500 times and reports patients per second.
 - **Patient**: 6-month risk with its 80% range and the decision thresholds, second opinion, survival
   curve, main factors (with the patient's values), doctor's estimate vs model, and the Granite briefing.
+  The clinician can enter their own 6-month survival estimate to see doctor, model and combined risk side by side
+  (combined = the API's 50/50 blend); the estimate itself is never written to the audit log.
 - **Audit log** (auditor role only).
 
 ## Run locally (Windows PowerShell, from the repo root)
