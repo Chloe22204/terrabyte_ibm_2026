@@ -212,8 +212,8 @@ def score(p, user):
     return api_post("/score", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs})
 
 
-# Granite on 3 vCPUs takes ~30-90 s per prep sheet; wait a little longer than genai/granite.py does
-LLM_WAIT = float(os.environ.get("TTT_LLM_TIMEOUT", "180")) + 30
+# Granite on our 3-vCPU z17 takes ~1.5-2 min per prep sheet; wait a little longer than genai/granite.py (300 s)
+LLM_WAIT = float(os.environ.get("TTT_LLM_TIMEOUT", "300")) + 30
 
 
 def clean_warnings(out):

@@ -35,11 +35,15 @@ openssl req -x509 -newkey rsa:3072 -nodes -days 30 -subj "/CN=timetotalk" \
   -keyout ~/ttt-certs/key.pem -out ~/ttt-certs/cert.pem
 python app/manage_users.py add dr_tan --file ~/ttt-config/users.json
 podman build -t timetotalk-dashboard -f app/Containerfile .
-podman run -d --name ttt-dash -p 8501:8501 \
+podman run -d --name ttt-dash --network host \
   -e TTT_ID_SALT=$(openssl rand -hex 16) \
   -v ~/ttt-certs:/certs:ro,Z -v ~/ttt-config:/config:ro,Z -v $PWD/data:/data:ro,Z \
   timetotalk-dashboard
 ```
+`--network host` lets the dashboard reach Granite (llama-server on the VM's 127.0.0.1:8080, see
+docs/SETUP.md step 3e). With `-p 8501:8501` instead, the container has its own network, can't see
+Granite, and every briefing falls back to the template.
+
 Open it through an SSH tunnel rather than exposing the port: `ssh -L 8501:localhost:8501 linux1@<server>`,
 then https://localhost:8501.
 
