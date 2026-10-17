@@ -112,6 +112,10 @@ All of these were captured on our LinuxONE Community Cloud server.
 
 ![Training on z17](screenshots/07_training_and_doctor_plus_ai_on_z17.png)
 
+**8. Scalability under load:** the stress tests (`tests/test_stress.py`) on the z17. 30 doctors at once got **0 errors, median 76 ms, 241 requests/s** (about 4.5x a laptop). All 1,821 test patients were scored at **1,381 patients/s**, and a password-spraying attack was locked out after 20 attempts. Full comparison: [tests/README.md](tests/README.md).
+
+![Stress tests on z17](screenshots/08_stress_test_z17.png)
+
 ## Decisions log (what we chose, what we rejected, and why)
 
 | Decision | Why |
