@@ -209,14 +209,16 @@ def main(args):
     second_va = second_te = None
     try:
         import xgboost as xgb
+    except Exception as e:   # not installed, or XGBoostError when OpenMP is missing (macOS: brew install libomp)
+        xgb = None
+        print(f"xgboost not available ({type(e).__name__}) - skipping second opinion")
+    if xgb is not None:
         clf = xgb.XGBClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
                                 subsample=0.8, colsample_bytree=0.8, random_state=SEED)
         clf.fit(Xv[tr_k], y_tr[k_tr])
         second_va, second_te = clf.predict_proba(Xv[va])[:, 1], clf.predict_proba(Xv[te])[:, 1]
         metrics["xgb_auc_6m_test"] = roc_auc_score(y_te[k_te], second_te[k_te])
         clf.save_model(f"{args.out}/xgb_6m.json")
-    except ImportError:
-        print("xgboost not available - skipping second opinion")
 
     # ---------------------------------------------------------------- decision layer (thresholds from VALIDATION)
     yv, rv = y_va[k_va], r_va[k_va]

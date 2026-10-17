@@ -10,7 +10,7 @@ Everything runs on one LinuxONE VM. Work through the steps in order. Each step e
 | 3 | Get Granite running | 45–60 min | 2 |
 | 4 | Test the prep sheet (genai) | 5 min | – |
 | 5 | Run the API in a container | 10 min | – |
-| 6 | Dashboard | – | – |
+| 6 | Dashboard | 5 min | – |
 | 7 | Capture evidence for judging | 15 min | – |
 
 Our VM: s390x, 3 vCPUs, 7.8 GB RAM (about 4.9 GB free), **no swap**, 35 GB free disk.
@@ -179,8 +179,24 @@ podman exec ttt whoami                              # appuser (not root)
 | `POST /benchmark?n=1000` | scoring speed |
 
 ## 6. Dashboard
-`app/` (Streamlit) hasn't been built yet. When it is, open it from your laptop through an SSH tunnel so it isn't exposed publicly:
-`ssh -L 8501:localhost:8501 <user>@<vm-ip>`, then browse to http://localhost:8501.
+`app/` is FastAPI + server-rendered HTML (Streamlit was dropped: its `pyarrow` dependency has no s390x build).
+Quick start on the VM, plain HTTP, scoring through the API from step 5:
+```bash
+cd ~/terrabyte_ibm_2026
+pip3 install -r app/requirements.txt
+export TTT_ID_SALT=$(python3 -c "import secrets; print(secrets.token_hex(16))")
+export TTT_COOKIE_SECURE=0                                   # plain http, reached only through the tunnel
+export TTT_USE_API=1 TTT_API_URL=http://127.0.0.1:8000       # TTT_API_TOKEN from step 5 must still be set
+python3 app/manage_users.py add dr_tan --role clinician      # asks for a password (12+ characters)
+nohup python3 -m uvicorn app.dashboard:app --host 127.0.0.1 --port 8501 > dashboard.log 2>&1 &
+```
+Leave out the `TTT_USE_API` line to score inside the dashboard process instead (it reads `artifacts_logistic/`).
+Without `data/support2.csv` it shows the precomputed results and no doctor's estimates.
+
+From your laptop: `ssh -L 8501:localhost:8501 <user>@<vm-ip>`, then browse to http://localhost:8501.
+For the HTTPS container version, see [app/README.md](../app/README.md).
+
+✅ The worklist loads after login and shows "Scoring: LinuxONE API"; a patient page says "Scored live".
 
 ## 7. Evidence for judging (rubric: "use screenshots as evidence")
 Take these screenshots for the video and README:

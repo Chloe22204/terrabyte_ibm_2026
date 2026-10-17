@@ -21,7 +21,7 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
          genai/ IBM Granite (llama.cpp, local) + RAG over care-planning guidelines
                      │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ், tested languages only) + "ask why"
                      ▼
-         app/ Streamlit clinician dashboard
+         app/ clinician dashboard (FastAPI + server-rendered HTML: login, roles, worklist, audit log)
 ```
 
 ## Run it
@@ -77,7 +77,6 @@ POST /score   (header: Authorization: Bearer <token>)
 
 **Try it**
 - `python api/try_api.py --token <token>` scores 4 demo patients, one per decision.
-- `api/API_demo.ipynb` is a notebook walkthrough of calling the API from Python.
 
 ## Proof it runs on IBM Z (LinuxONE z17)
 
@@ -203,7 +202,8 @@ Clinician-facing only. The model prompts and never decides. It is never shown to
 - NumPy — https://numpy.org · SciPy — https://scipy.org · pandas — https://pandas.pydata.org
 - scikit-learn — https://scikit-learn.org · XGBoost — https://xgboost.ai · matplotlib — https://matplotlib.org
 - TensorFlow — https://www.tensorflow.org · IBM zDNN plugin for TensorFlow (`ibm-zdnn-plugin`, preinstalled in the LinuxONE Jupyter Lab ML image) — https://github.com/IBM/zDNN
-- FastAPI — https://fastapi.tiangolo.com · Uvicorn — https://www.uvicorn.org · Streamlit — https://streamlit.io
+- FastAPI — https://fastapi.tiangolo.com · Uvicorn — https://www.uvicorn.org · Jinja2 — https://jinja.palletsprojects.com · python-multipart — https://github.com/Kludex/python-multipart
+- pytest — https://pytest.org · HTTPX — https://www.python-httpx.org
 - llama.cpp — https://github.com/ggml-org/llama.cpp · IBM Granite — https://www.ibm.com/granite
 - IBM LinuxONE Community Cloud Jupyter Lab ML image — https://github.com/linuxone-community-cloud/jupyter-lab-ml
 

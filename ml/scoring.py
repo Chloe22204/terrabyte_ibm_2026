@@ -1,5 +1,5 @@
 """
-Shared scoring logic used by the API (and the Streamlit app if it runs next to the artifacts).
+Shared scoring logic used by the API and the dashboard (app/dashboard.py, in local-scoring mode).
 Loads everything from plain JSON files produced by train.py. Needs only numpy (+ xgboost optional).
 """
 import glob, json, os
@@ -28,11 +28,21 @@ class TimeToTalkScorer:
                 import xgboost as xgb
                 self.xgb = xgb.XGBClassifier()
                 self.xgb.load_model(f"{a}/xgb_6m.json")
-            except ImportError:
-                pass
+            except Exception:   # not installed, or XGBoostError when OpenMP is missing (macOS: brew install libomp)
+                self.xgb = None
 
     def _calib(self, r):
         return np.interp(r, self.cal_x, self.cal_y)
+
+    @staticmethod
+    def _number(v):
+        """float(v), or None when the value is missing. Covers None, "", "NA", "NaN" (the UCI
+        download's spelling) and float NaN/inf, so a missing lab is filled instead of turning
+        the whole risk into NaN (which would fall through to "No action")."""
+        if v is None or str(v).strip().lower() in ("", "na", "nan"):
+            return None
+        v = float(v)
+        return v if np.isfinite(v) else None
 
     def vectorize(self, patient: dict) -> np.ndarray:
         """Turn a raw patient record (SUPPORT2-style keys) into the model's feature vector,
@@ -42,10 +52,10 @@ class TimeToTalkScorer:
         for f in self.features:
             if f.endswith("_missing"):
                 base = f[: -len("_missing")]
-                x.append(1.0 if p.get(base) in (None, "", "nan") else 0.0)
+                x.append(1.0 if self._number(p.get(base)) is None else 0.0)
             elif f in self.fills:
-                v = p.get(f)
-                x.append(float(v) if v not in (None, "", "nan") else float(self.fills[f]))
+                v = self._number(p.get(f))
+                x.append(v if v is not None else float(self.fills[f]))
             else:  # dummy column like "dzgroup_CHF" or "sex_male"
                 col, _, level = f.partition("_")
                 x.append(1.0 if str(p.get(col, "unknown")) == level else 0.0)
