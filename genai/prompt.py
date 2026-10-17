@@ -54,6 +54,8 @@ FRIENDLY = {
 
 
 def friendly(feature):
+    if isinstance(feature, dict):                 # new API format: already has a plain-English label
+        return feature.get("label") or friendly(feature.get("feature", ""))
     if feature in FRIENDLY:
         return FRIENDLY[feature]
     if feature.startswith("dzgroup_"):
@@ -62,7 +64,7 @@ def friendly(feature):
 
 
 def build_prompt(score, summary, passages, language="English"):
-    factors = ", ".join(f"{friendly(f['feature'])} ({f['effect']})" for f in score["top_factors"][:3])
+    factors = ", ".join(f"{friendly(f)} ({f['effect']})" for f in score["top_factors"][:3])
     agree = ("not available" if score.get("second_opinion_risk_6m") is None
              else ("no - models disagree" if score["models_disagree"] else "yes"))
     lo, hi = score["risk_6m_interval_80"]
@@ -78,5 +80,5 @@ def build_why_prompt(score, question):
     """For the 'Ask why' box in the app."""
     return [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Model output: {score['decision']}, 6-month risk "
-             f"{score['risk_6m']:.0%}, factors: {score['top_factors'][:5]}.\nClinician asks: {question}\n"
+             f"{score['risk_6m']:.0%}, factors: {[friendly(f) + ' (' + f['effect'] + ')' for f in score['top_factors'][:5]]}.\nClinician asks: {question}\n"
              "Answer in under 120 words using only the model output above."}]

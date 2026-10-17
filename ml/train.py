@@ -28,6 +28,7 @@ from sklearn.model_selection import train_test_split
 
 from coxph import CoxPH, concordance_index, kaplan_meier
 from logit import LogisticModel, anchor_curve
+from explain import readable_factors
 
 SEED = 42
 HORIZONS = {"2m": 60, "6m": 180}
@@ -375,9 +376,8 @@ def main(args):
     # ---------------------------------------------------------------- precomputed demo file
     top = []
     for i in te:
-        c = model.contributions(Xv[i])
-        best = sorted(c.items(), key=lambda kv: -abs(kv[1]))[:3]
-        top.append("; ".join(f"{k} {'+' if v > 0 else '-'}" for k, v in best))
+        best = readable_factors(model.contributions(Xv[i]), df.iloc[i].to_dict(), k=3)
+        top.append("; ".join(f"{f['label']} ({f['effect']})" for f in best))
     curve_times = [30, 60, 90, 180, 365]
     S = anchor_curve(cox.predict_survival(Xv[te], curve_times), cox.predict_survival(Xv[te], [180])[:, 0], r_te)
     out = pd.DataFrame({"id": df["id"].to_numpy()[te], "age": df["age"].to_numpy()[te],

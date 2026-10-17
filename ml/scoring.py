@@ -6,6 +6,7 @@ import glob, json, os
 import numpy as np
 from coxph import CoxPH
 from logit import LogisticModel, anchor_curve
+from explain import readable_factors
 
 CURVE_DAYS = [0, 15, 30, 60, 90, 120, 180, 270, 365]
 
@@ -75,8 +76,7 @@ class TimeToTalkScorer:
         else:
             decision = "No action"
 
-        contrib = self.model.contributions(x[0])
-        top = sorted(contrib.items(), key=lambda kv: -abs(kv[1]))[:5]
+        top_factors = readable_factors(self.model.contributions(x[0]), patient, k=5)
         return {
             "risk_6m": risk, "risk_6m_interval_80": [lo, hi],
             "survival_2m": float(S[CURVE_DAYS.index(60)]),
@@ -84,7 +84,6 @@ class TimeToTalkScorer:
             "survival_curve": {"days": CURVE_DAYS, "survival": [float(s) for s in S]},
             "second_opinion_risk_6m": second, "models_disagree": bool(disagree),
             "decision": decision,
-            "top_factors": [{"feature": k, "effect": "raises risk" if v > 0 else "lowers risk",
-                             "log_odds_contribution": float(v)} for k, v in top],
+            "top_factors": top_factors,   # e.g. {"label": "Cancer: spread (metastatic)", "effect": "raises risk", ...}
             "thresholds": {k: th[k] for k in ["t_high", "t_mid", "max_interval_width", "max_model_disagreement"]},
         }

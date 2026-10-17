@@ -29,8 +29,13 @@ if "id" not in d.columns:
 ids = a.ids
 if not ids:   # one demo patient per decision, from the held-out test set
     s = pd.read_csv(a.scored)
-    ids = [int(s[s.decision == dec].iloc[0]["id"]) for dec in
-           ["Conversation due now", "Review in 2 weeks", "No action", "Clinician judgement"] if (s.decision == dec).any()]
+    # pick a typical-looking patient per decision (not an extreme 100% case) for the demo
+    target = {"Conversation due now": 0.85, "Review in 2 weeks": 0.50, "No action": 0.20, "Clinician judgement": 0.55}
+    ids = []
+    for dec, t in target.items():
+        g = s[s.decision == dec]
+        if len(g):
+            ids.append(int(g.loc[(g.risk_6m - t).abs().idxmin(), "id"]))
 
 for pid in ids:
     row = d[d["id"] == pid].iloc[0].drop(labels=[c for c in LEAKY if c in d.columns])
@@ -51,4 +56,4 @@ for pid in ids:
           if r['second_opinion_risk_6m'] is not None else f"  6-month risk : {r['risk_6m']:.0%}  (80% range {lo:.0%}-{hi:.0%})")
     if r.get("combined_risk_6m") is not None:
         print(f"  doctor risk {r['doctor_risk_6m']:.0%}  ->  doctor + TimeToTalk combined : {r['combined_risk_6m']:.0%}")
-    print("  top factors : " + ", ".join(f"{f['feature']} ({f['effect']})" for f in r["top_factors"][:3]))
+    print("  top factors : " + "; ".join(f"{f.get('label', f['feature'])} ({f['effect']})" for f in r["top_factors"][:3]))
