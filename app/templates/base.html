@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}TimeToTalk{% endblock %} · TimeToTalk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">TimeToTalk</a>
+  <span class="tag">Clinician decision support · runs on IBM LinuxONE</span>
+  {% if s %}
+  <div class="who">
+    <span>{{ s.user }} · {{ s.role }}</span>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{ s.csrf }}">
+      <button class="link" type="submit">Sign out</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  For clinicians only. The model prompts a conversation and never decides; it is never shown to patients.
+  Patient references are pseudonyms. Every view is audit-logged.
+</footer>
+</body>
+</html>

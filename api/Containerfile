@@ -1,5 +1,6 @@
 # Build from repo root on LinuxONE:  podman build -t timetotalk-api -f api/Containerfile .
 # (docker works the same).  Base image is multi-arch, so it builds natively on s390x.
+# Run with --network host so the API can reach Granite (llama-server on 127.0.0.1:8080). See docs/SETUP.md.
 FROM python:3.11-slim
 RUN useradd --create-home appuser
 WORKDIR /app
@@ -7,6 +8,7 @@ COPY api/requirements.txt .
 # If a wheel fails to build on s390x, drop xgboost from requirements: the API still runs (no second opinion).
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ml/coxph.py ml/logit.py ml/scoring.py ml/explain.py /app/ml/
+COPY genai /app/genai
 COPY api/app.py /app/
 COPY artifacts /app/artifacts
 ENV TTT_ARTIFACTS=/app/artifacts TTT_AUDIT_LOG=/app/logs/audit.log

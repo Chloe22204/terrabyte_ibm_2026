@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+numpy
+# second-opinion model; if it fails to install on s390x, remove it (no XGBoost second opinion then)
+xgboost

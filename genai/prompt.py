@@ -24,7 +24,7 @@ Rules:
 TEMPLATE = """PATIENT SUMMARY (de-identified)
 {summary}
 
-MODEL OUTPUT (from the TimeToTalk survival model; do not alter)
+MODEL OUTPUT (from the TimeToTalk risk model; do not alter)
 - Recommendation: {decision}
 - Estimated 6-month mortality risk: {risk:.0%} (80% range {lo:.0%}-{hi:.0%})
 - Second model agrees: {agree}
@@ -46,8 +46,10 @@ clinician's own assessment should lead."""
 FRIENDLY = {
     "age": "age", "num.co": "number of other illnesses", "scoma": "level of consciousness",
     "alb": "low albumin (nutrition)", "bili": "bilirubin (liver)", "crea": "creatinine (kidneys)",
-    "bun": "urea (kidneys)", "adlsc": "difficulty with daily activities", "aps": "overall physiology score",
-    "sps": "overall physiology score", "meanbp": "blood pressure", "pafi": "oxygen levels",
+    "bun": "urea (kidneys)", "adlsc": "difficulty with daily activities", "aps": "APACHE III physiology score",
+    "sps": "SUPPORT physiology score", "meanbp": "blood pressure", "pafi": "oxygen levels",
+    "ca": "cancer", "dzgroup": "diagnosis", "sex": "sex", "temp": "temperature", "sod": "sodium",
+    "ph": "blood pH", "glucose": "blood glucose", "urine": "urine output", "diabetes": "diabetes",
     "hday": "days in hospital before assessment", "ca_metastatic": "cancer that has spread",
     "dementia": "dementia", "wblc": "white cell count", "resp": "breathing rate", "hrt": "heart rate",
 }
@@ -63,8 +65,29 @@ def friendly(feature):
     return feature.replace("_missing", " (not measured)")
 
 
-def build_prompt(score, summary, passages, language="English"):
-    factors = ", ".join(f"{friendly(f)} ({f['effect']})" for f in score["top_factors"][:3])
+# A one-hot factor can matter because the patient does NOT have that level
+# (e.g. "ca_no" raising risk means "has cancer"). Say that the right way round.
+ABSENT = {"ca_no": "has cancer", "ca_yes": "cancer has spread or no cancer", "sex_male": "female",
+          "sex_female": "male"}
+
+
+def factor_text(f, patient=None):
+    if f.get("label"):                            # scoring.py (ml/explain.py) already made a readable label
+        return f"{f['label']} ({f['effect']})"
+    feat = f["feature"]
+    col, sep, level = feat.partition("_")
+    p = {k.lower().replace("_", "."): v for k, v in (patient or {}).items()}
+    if feat.endswith("_missing") and p.get(col) not in (None, "", "nan"):
+        return f"{friendly(col)} was measured ({f['effect']})"
+    if patient is not None and sep and not feat.endswith("_missing") and col in ("sex", "dzgroup", "ca"):
+        if str(p.get(col, "unknown")) != level:
+            name = ABSENT.get(feat, "not " + friendly(feat))
+            return f"{name} ({f['effect']})"
+    return f"{friendly(feat)} ({f['effect']})"
+
+
+def build_prompt(score, summary, passages, language="English", patient=None):
+    factors = ", ".join(factor_text(f, patient) for f in score["top_factors"][:3])
     agree = ("not available" if score.get("second_opinion_risk_6m") is None
              else ("no - models disagree" if score["models_disagree"] else "yes"))
     lo, hi = score["risk_6m_interval_80"]
@@ -76,9 +99,10 @@ def build_prompt(score, summary, passages, language="English"):
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": body}]
 
 
-def build_why_prompt(score, question):
+def build_why_prompt(score, question, patient=None):
     """For the 'Ask why' box in the app."""
+    factors = "; ".join(factor_text(f, patient) for f in score["top_factors"][:5])
     return [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Model output: {score['decision']}, 6-month risk "
-             f"{score['risk_6m']:.0%}, factors: {[friendly(f) + ' (' + f['effect'] + ')' for f in score['top_factors'][:5]]}.\nClinician asks: {question}\n"
+             f"{score['risk_6m']:.0%}, factors: {factors}.\nClinician asks: {question}\n"
              "Answer in under 120 words using only the model output above."}]

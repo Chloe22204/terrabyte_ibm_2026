@@ -19,24 +19,25 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
                      │
                      ▼
          genai/ IBM Granite (llama.cpp, local) + RAG over care-planning guidelines
-                     │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ்) + "ask why"
+                     │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ், tested languages only) + "ask why"
                      ▼
          app/ Streamlit clinician dashboard
 ```
 
 ## Run it
 
+Full step-by-step guide, with checks and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**. Quick version, on the LinuxONE VM:
+
 ```bash
-# 1. data: download SUPPORT2 from https://archive.ics.uci.edu/dataset/880 → data/support2.csv
-# 2. train + evaluate (≈1 min on 3 vCPUs)
-python ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
-# 3. optional: accelerator second-opinion model
-python ml/accelerator_model.py --data data/support2.csv --out artifacts
-# 4. API in a container
-docker build -t timetotalk-api -f api/Containerfile .
-docker run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=<token> -e TTT_ID_SALT=<salt> timetotalk-api
-# or without a container (e.g. inside the Jupyter terminal):
-TTT_API_TOKEN=<token> TTT_ARTIFACTS=artifacts nohup python -m uvicorn app:app --app-dir api --port 8000 &
+python3 ml/train.py --data data/support2.csv --out artifacts --bootstraps 20      # 1. train (data from UCI, see guide)
+llama-server -m ~/models/granite-be.gguf -t 3 -c 2048 --host 127.0.0.1 --port 8080 &  # 2. Granite (build steps in guide)
+python3 genai/prep_sheet.py --language English                                    # 3. prep sheet from the command line
+podman build -t timetotalk-api -f api/Containerfile .                              # 4. API in a container (docker works the same)
+podman run -d --name ttt --network host -e TTT_API_TOKEN=$(openssl rand -hex 24) -e TTT_ID_SALT=$(openssl rand -hex 16) timetotalk-api
+# 4b. or without a container, e.g. inside the Jupyter terminal (no openssl there, so make the token with Python):
+#     export TTT_API_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(16))")
+#     TTT_ARTIFACTS=artifacts nohup python3 -m uvicorn app:app --app-dir api --port 8000 &
+python3 ml/accelerator_model.py --data data/support2.csv --out artifacts          # optional: accelerator second-opinion model
 curl localhost:8000/health
 ```
 
@@ -204,3 +205,10 @@ Clinician-facing only. The model prompts and never decides. It is never shown to
 - FastAPI — https://fastapi.tiangolo.com · Uvicorn — https://www.uvicorn.org · Streamlit — https://streamlit.io
 - llama.cpp — https://github.com/ggml-org/llama.cpp · IBM Granite — https://www.ibm.com/granite
 - IBM LinuxONE Community Cloud Jupyter Lab ML image — https://github.com/linuxone-community-cloud/jupyter-lab-ml
+
+Care-planning guidance used for retrieval (`genai/guidelines/`, summarised in our own words, not copied):
+- Serious Illness Conversation Guide, Ariadne Labs — https://www.ariadnelabs.org/serious-illness-care/
+- VitalTalk — https://www.vitaltalk.org · SPICT — https://www.spict.org.uk
+- SPIKES protocol, Baile et al., The Oncologist 2000 — https://doi.org/10.1634/theoncologist.5-4-302
+- NICE NG142 End of life care for adults — https://www.nice.org.uk/guidance/ng142
+- Living Matters, Agency for Integrated Care Singapore — https://www.livingmatters.sg
