@@ -54,6 +54,8 @@ FRIENDLY = {
 
 
 def friendly(feature):
+    if isinstance(feature, dict):                 # new API format: already has a plain-English label
+        return feature.get("label") or friendly(feature.get("feature", ""))
     if feature in FRIENDLY:
         return FRIENDLY[feature]
     if feature.startswith("dzgroup_"):
@@ -68,6 +70,8 @@ ABSENT = {"ca_no": "has cancer", "ca_yes": "cancer has spread or no cancer", "se
 
 
 def factor_text(f, patient=None):
+    if f.get("label"):                            # scoring.py (ml/explain.py) already made a readable label
+        return f"{f['label']} ({f['effect']})"
     feat = f["feature"]
     col, sep, level = feat.partition("_")
     p = {k.lower().replace("_", "."): v for k, v in (patient or {}).items()}

@@ -72,7 +72,7 @@ def summarize(patient: dict) -> str:
 
 def gather_passages(score, max_chunks=7):
     """Top 2 for 'why now' (based on the patient's factors), then the best chunk per remaining heading."""
-    factors = " ".join(friendly(f["feature"]) for f in score["top_factors"][:3])
+    factors = " ".join(friendly(f) for f in score["top_factors"][:3])   # uses the readable label
     why_query = f"{score['decision']} when to start conversation {factors}"
     if score["decision"] == "Clinician judgement" or score.get("models_disagree"):
         why_query += " uncertainty prognosis range"
