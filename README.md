@@ -33,10 +33,82 @@ python ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
 # 3. optional: accelerator second-opinion model
 python ml/accelerator_model.py --data data/support2.csv --out artifacts
 # 4. API in a container
-podman build -t timetotalk-api -f api/Containerfile .
-podman run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=$(openssl rand -hex 24) -e TTT_ID_SALT=$(openssl rand -hex 16) timetotalk-api
+docker build -t timetotalk-api -f api/Containerfile .
+docker run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=<token> -e TTT_ID_SALT=<salt> timetotalk-api
+# or without a container (e.g. inside the Jupyter terminal):
+TTT_API_TOKEN=<token> TTT_ARTIFACTS=artifacts nohup python -m uvicorn app:app --app-dir api --port 8000 &
 curl localhost:8000/health
 ```
+
+## Scoring API (runs on LinuxONE)
+
+A FastAPI service (`api/app.py`) serves the model on the z17. It scores one patient in **about 1–2 ms**.
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /health` | Status, machine type (`s390x` on LinuxONE), number of loaded models |
+| `POST /score` | Decision, 6-month risk with 80% range, second opinion, top factors in plain English, survival curve. If `doctor_survival_6m` is sent, also the **combined doctor + model risk** |
+| `POST /benchmark?n=1000` | Scores one patient *n* times and reports patients per second |
+
+**Example request**
+
+```json
+POST /score   (header: Authorization: Bearer <token>)
+{ "patient_id": "3739", "patient": { "age": 80.1, "sex": "male", "dzgroup": "Coma", "scoma": 44, "...": "..." },
+  "doctor_survival_6m": 0.4 }
+```
+
+**Example reply** (shortened)
+
+```json
+{ "decision": "Conversation due now", "risk_6m": 0.85, "risk_6m_interval_80": [0.82, 0.89],
+  "combined_risk_6m": 0.72,
+  "top_factors": [ { "label": "Difficulty with daily activities (0-7) 7.0", "effect": "raises risk" },
+                   { "label": "Diagnosis: Coma", "effect": "raises risk" } ] }
+```
+
+**Security**
+- **Token required:** every scoring call needs the bearer token. A missing or wrong token gets `401`.
+- **Pseudonymised IDs:** patient IDs are SHA-256 hashed with a secret salt before logging. Raw IDs are never stored.
+- **Audit log:** every decision is logged with time, clinician and decision. No clinical values are logged.
+- **No outside AI:** inference (risk models and Granite) stays on the LinuxONE server.
+- **Container:** the container runs as a non-root user (`api/Containerfile`).
+
+**Try it**
+- `python api/try_api.py --token <token>` scores 4 demo patients, one per decision.
+- `api/API_demo.ipynb` is a notebook walkthrough of calling the API from Python.
+
+## Proof it runs on IBM Z (LinuxONE z17)
+
+All of these were captured on our LinuxONE Community Cloud server.
+
+**1. The hardware:** architecture `s390x`, machine type **9175 (IBM z17)**, and our API reporting it runs there.
+
+![IBM Z proof](screenshots/01_ibmz_s390x_z17.png)
+
+**2. Four patients, four decisions,** each with a risk, an uncertainty range, a second opinion and plain-English reasons.
+
+![Four demo patients](screenshots/02_four_patients.png)
+
+**3. AI + clinician:** the doctor's own estimate (60% risk) blended with TimeToTalk (85%) gives a combined risk of 73%.
+
+![Doctor plus AI](screenshots/03_doctor_plus_ai.png)
+
+**4. Security:** a wrong token is rejected (`401`), and the audit log records only hashed patient IDs, the clinician and the decision. No clinical values are logged.
+
+![Security](screenshots/04_security_401_audit.png)
+
+**5. Speed:** 1,000 patients scored in 0.67 s, which is **about 1,490 patients per second (0.67 ms each)** on 3 virtual CPUs.
+
+![Speed benchmark](screenshots/05_speed_benchmark.png)
+
+**6. The on-chip AI accelerator:** `lscpu` lists the `nnpa` flag (Neural Network Processing Assist, the Telum II AI accelerator), so our server can use it.
+
+![AI accelerator flag](screenshots/06_ai_accelerator_nnpa.png)
+
+**7. Training and evaluation on the mainframe:** the full pipeline (main model, 20 bootstrap models, XGBoost, fairness audit) runs in **2.2 seconds** on the z17, and the doctor + AI result (**0.831** vs 0.786 doctor alone) is reproduced there.
+
+![Training on z17](screenshots/07_training_and_doctor_plus_ai_on_z17.png)
 
 ## Decisions log (what we chose, what we rejected, and why)
 
