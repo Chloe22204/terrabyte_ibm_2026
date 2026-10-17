@@ -20,12 +20,13 @@ from granite import chat, GraniteUnavailable  # noqa: E402
 
 # Whitelist: the language string goes into the prompt, so only these values are allowed.
 LANGUAGES = {"English": "English", "Chinese": "Simplified Chinese", "Malay": "Bahasa Melayu", "Tamil": "Tamil"}
-MAX_TOKENS = 450     # leaves room for non-English output; ~30-90 s on 3 vCPUs
+MAX_TOKENS = 300     # Granite writes ~4.7 tokens/s on our 3 vCPUs -> at most ~65 s of output
+PASSAGE_SENTENCES = 2  # Granite reads ~15 tokens/s, so each passage is cut to its first 2 sentences
 
 # One retrieval query per prep-sheet heading, so every heading has guidance behind it.
 HEADING_QUERIES = [  # (query, how many passages)
     ("prepare before the conversation who should be present family interpreter setting", 1),
-    ("open questions understanding illness goals fears what matters most", 2),
+    ("open questions understanding illness goals fears what matters most", 1),
     ("phrases words to avoid say instead", 1),
     ("document record care plan advance care planning next step review", 1),
 ]
@@ -70,14 +71,14 @@ def summarize(patient: dict) -> str:
     return "Patient " + "; ".join(parts) + "." if parts else "No summary available."
 
 
-def gather_passages(score, max_chunks=7):
+def gather_passages(score, max_chunks=5):
     """Top 2 for 'why now' (based on the patient's factors), then the best chunk per remaining heading."""
     factors = " ".join(friendly(f) for f in score["top_factors"][:3])   # uses the readable label
     why_query = f"{score['decision']} when to start conversation {factors}"
     if score["decision"] == "Clinician judgement" or score.get("models_disagree"):
         why_query += " uncertainty prognosis range"
     picked, seen = [], set()
-    for query, k in [(why_query, 2)] + HEADING_QUERIES:
+    for query, k in [(why_query, 1)] + HEADING_QUERIES:
         for c in retrieve(query, k=k + 2):
             key = (c["file"], c["title"])
             if key not in seen:
@@ -87,6 +88,10 @@ def gather_passages(score, max_chunks=7):
             if k == 0:
                 break
     return picked[:max_chunks]
+
+
+def shorten(text, n=PASSAGE_SENTENCES):
+    return " ".join(re.split(r"(?<=[.!?])\s+", text)[:n])
 
 
 PROGNOSIS = re.compile(r"\b(will die|going to die|(days?|weeks?|months?|years?) (left )?to live|"
@@ -140,7 +145,7 @@ def make_prep_sheet(score, patient, language="English", use_llm=True):
     warnings, used_llm = [], False
     if use_llm:
         messages = build_prompt(score, summarize(patient),
-                                [f"{c['text']} [{c['file']}]" for c in passages], LANGUAGES[language],
+                                [f"{shorten(c['text'])} [{c['file']}]" for c in passages], LANGUAGES[language],
                                 patient=patient)
         try:
             text = chat(messages, max_tokens=MAX_TOKENS)
