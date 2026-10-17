@@ -26,6 +26,8 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
 
 ## Run it
 
+**Model files:** `artifacts/` is what `ml/train.py` writes on each run. `artifacts_logistic/` is a frozen copy of the same logistic-model run that the dashboard, its container and the tests read, so a retrain never changes the demo underneath us.
+
 Full step-by-step guide, with checks and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**. Quick version, on the LinuxONE VM:
 
 ```bash
