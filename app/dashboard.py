@@ -10,7 +10,7 @@ Scoring is local by default (same scoring.py the API uses). Set TTT_USE_API=1 wi
 TTT_API_URL and TTT_API_TOKEN to score through the TimeToTalk API on LinuxONE instead.
 See app/README.md for the security controls.
 """
-import csv, json, os, re, secrets, sys, urllib.request
+import csv, json, os, platform, re, secrets, sys, time, urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 from security import AuditLog, LoginGuard, SessionStore, UserStore, pseudonym, same  # noqa: E402
 from genai.prompt import friendly  # noqa: E402
 from genai import prep_sheet  # noqa: E402   (retrieval + Granite + template fallback)
+from genai import granite  # noqa: E402
 
 # ---------------------------------------------------------------- configuration
 ARTIFACTS = os.environ.get("TTT_ARTIFACTS", str(ROOT / "artifacts_logistic"))
@@ -63,6 +64,7 @@ LANGUAGE_KEYS = {"English": "English", "Chinese (中文)": "Chinese", "Malay (Me
                  "Tamil (தமிழ்)": "Tamil"}      # display label -> genai/prep_sheet.py language
 LANGUAGES = list(LANGUAGE_KEYS)
 MAX_QUESTION = 500
+BENCH_N = 500
 PAGE_SIZE = 50
 
 # ---------------------------------------------------------------- data (test-set patients only)
@@ -187,7 +189,8 @@ def set_cookie(resp, name, value, max_age=None):
 def model_inputs(raw):
     """Only the columns the model uses (data minimisation): outcomes, the doctor's estimate,
     race, income etc. are never sent to the scorer or API."""
-    return {c: (raw.get(c) if raw.get(c) not in ("", "NA", "nan") else None) for c in INPUT_COLS}
+    # the UCI download writes missing values as "NaN", other copies as "" or "NA"
+    return {c: (None if str(raw.get(c, "")).strip().lower() in ("", "na", "nan") else raw.get(c)) for c in INPUT_COLS}
 
 
 def api_post(path, payload, timeout=10):
@@ -293,6 +296,75 @@ def factor_bars(factors, w=220):
              "width": max(4, w * abs(f["log_odds_contribution"]) / m)} for f in factors]
 
 
+def doctor_choice(field):
+    """The doctor's-estimate form field: "recorded" (the estimate on file), "none" (cleared),
+    or the clinician's own 6-month survival estimate as a whole percentage 0-100."""
+    field = (field or "recorded").strip()
+    if field in ("recorded", "none"):
+        return field
+    if field.isdigit() and 0 <= int(field) <= 100:
+        return str(int(field))
+    raise HTTPException(400)
+
+
+def doctor_view(p, risk, field):
+    """Doctor's estimate vs model, and the two combined. Combined = the same 50/50 average of the
+    two 6-month risks as the API's blend_with_doctor (AUC 0.831 on held-out patients, ml/combo.py)."""
+    d = p["doctor_surv"] if field == "recorded" else (None if field == "none" else int(field) / 100)
+    if d is None:
+        return {"field": field, "surv": None, "source": field}
+    doctor_risk = 1 - d
+    combined = (risk + doctor_risk) / 2
+    gap = d - (1 - risk)
+    bar = lambda v: max(2, 300 * v)
+    return {"field": field, "source": field if field == "recorded" else "yours", "surv": d,
+            "risk": doctor_risk, "combined": combined, "gap": gap, "gap_flag": gap >= GAP,
+            "bars": {"doctor": bar(doctor_risk), "model": bar(risk), "combined": bar(combined)}}
+
+
+_status = {"t": 0.0, "v": None}
+
+
+def system_status():
+    """Where inference runs, for the worklist's System panel. Cached for 30 s (Granite check is a network call)."""
+    if _status["v"] is not None and time.monotonic() - _status["t"] < 30:
+        return _status["v"]
+    if USE_API:
+        try:
+            with urllib.request.urlopen(f"{API_URL}/health", timeout=5) as r:
+                h = json.load(r)
+            v = {"machine": h.get("machine"), "bootstraps": h.get("bootstrap_models"),
+                 "second_opinion": bool(h.get("second_opinion")),
+                 "granite": bool((h.get("granite") or {}).get("ok")), "where": "TimeToTalk API"}
+        except (OSError, ValueError):
+            v = {"error": "TimeToTalk API unreachable"}
+    else:
+        v = {"machine": platform.machine(), "bootstraps": len(scorer.boots), "second_opinion": scorer.xgb is not None,
+             "granite": bool(granite.health().get("ok")), "where": "this dashboard"}
+    v["linuxone"] = v.get("machine") == "s390x"
+    _status.update(t=time.monotonic(), v=v)
+    return v
+
+
+def benchmark():
+    """Score one test patient BENCH_N times (model speed only, no HTTP), locally or on the API."""
+    p = next((q for q in ORDER if q["id"] in RAW), None)
+    if p is None:
+        return {"error": "Benchmark needs data/support2.csv for live scoring."}
+    inputs = model_inputs(RAW[p["id"]])
+    if USE_API:
+        try:
+            r = api_post(f"/benchmark?n={BENCH_N}", {"patient_id": p["ref"], "patient": inputs}, timeout=120)
+        except OSError:
+            return {"error": "TimeToTalk API unreachable."}
+        return {"n": r["n"], "per_s": r["patients_per_s"], "ms": r["per_patient_ms"], "where": "TimeToTalk API"}
+    t0 = time.perf_counter()
+    for _ in range(BENCH_N):
+        scorer.score(inputs)
+    total = time.perf_counter() - t0
+    return {"n": BENCH_N, "per_s": BENCH_N / total, "ms": total / BENCH_N * 1000, "where": "this dashboard"}
+
+
 def current_result(p, user):
     """Live score (local or API); the precomputed row if that's impossible. Returns (result, live)."""
     try:
@@ -303,8 +375,10 @@ def current_result(p, user):
     return (result, True) if result is not None else (fallback_result(p), False)
 
 
-def patient_view(request, s, p, briefing=None, language="English", why=None, question=""):
+def patient_view(request, s, p, briefing=None, language="English", why=None, question="", doctor="recorded"):
+    t0 = time.perf_counter()
     result, live = current_result(p, s["user"])
+    score_ms = (time.perf_counter() - t0) * 1000
     lo, hi = result["risk_6m_interval_80"]
     risk = result["risk_6m"]
     ctx = {"s": s, "p": p, "r": result, "live": live, "mode": "LinuxONE API" if USE_API else "local scorer",
@@ -314,7 +388,8 @@ def patient_view(request, s, p, briefing=None, language="English", why=None, que
            "range": {"lo": 20 + 360 * lo, "hi": 20 + 360 * hi, "risk": 20 + 360 * risk,
                      "t_mid": 20 + 360 * THRESHOLDS["t_mid"], "t_high": 20 + 360 * THRESHOLDS["t_high"]},
            "languages": LANGUAGES, "language": language, "briefing": briefing,
-           "why": why, "question": question, "max_question": MAX_QUESTION}
+           "why": why, "question": question, "max_question": MAX_QUESTION,
+           "doc": doctor_view(p, risk, doctor), "score_ms": score_ms}
     return templates.TemplateResponse(request, "patient.html", ctx)
 
 
@@ -376,6 +451,10 @@ def logout(request: Request, csrf: str = Form(...)):
 @app.get("/", response_class=HTMLResponse)
 def worklist(request: Request, decision: str = "", dz: str = "", gap: str = "", page: int = 1):
     s = session(request)
+    return worklist_view(request, s, decision, dz, gap, page)
+
+
+def worklist_view(request, s, decision="", dz="", gap="", page=1, bench=None):
     decision = decision if decision in DECISIONS else ""        # whitelist every filter value
     dz = dz if dz in DZ_GROUPS else ""
     rows = [p for p in ORDER if (not decision or p["decision"] == decision) and (not dz or p["dz"] == dz)
@@ -388,7 +467,17 @@ def worklist(request: Request, decision: str = "", dz: str = "", gap: str = "", 
         "s": s, "rows": rows[(page - 1) * PAGE_SIZE: page * PAGE_SIZE], "n": len(rows), "page": page,
         "pages": pages, "decision": decision, "dz": dz, "gap": gap == "1", "decisions": DECISIONS,
         "dz_groups": DZ_GROUPS, "counts": counts, "n_gap": sum(p["gap_flag"] for p in PATIENTS.values()),
-        "info": DECISION_INFO, "gap_threshold": GAP, "mode": "LinuxONE API" if USE_API else "local scorer"})
+        "info": DECISION_INFO, "gap_threshold": GAP, "mode": "LinuxONE API" if USE_API else "local scorer",
+        "system": system_status(), "bench": bench, "bench_n": BENCH_N})
+
+
+@app.post("/benchmark", response_class=HTMLResponse)
+def run_benchmark(request: Request, csrf: str = Form(...)):
+    s = session(request)
+    check_csrf(s, csrf)
+    bench = benchmark()
+    audit.write("benchmark", user=s["user"], n=bench.get("n"), patients_per_s=round(bench.get("per_s", 0)))
+    return worklist_view(request, s, bench=bench)
 
 
 @app.get("/patient/{ref}", response_class=HTMLResponse)
@@ -405,32 +494,48 @@ def valid_patient(ref):
     return PATIENTS[ref]
 
 
-@app.post("/patient/{ref}/briefing", response_class=HTMLResponse)
-def briefing(request: Request, ref: str, csrf: str = Form(...), language: str = Form("English")):
+@app.post("/patient/{ref}/doctor", response_class=HTMLResponse)
+def doctor_estimate(request: Request, ref: str, csrf: str = Form(...), doctor: str = Form(..., max_length=10)):
+    """What-if: the clinician enters their own 6-month survival estimate to see it next to the model."""
     s = session(request)
     check_csrf(s, csrf)
     p = valid_patient(ref)
+    doctor = doctor_choice(doctor)
+    audit.write("doctor_estimate", user=s["user"], patient=ref,       # never the estimate itself
+                source="yours" if doctor.isdigit() else doctor)
+    return patient_view(request, s, p, doctor=doctor)
+
+
+@app.post("/patient/{ref}/briefing", response_class=HTMLResponse)
+def briefing(request: Request, ref: str, csrf: str = Form(...), language: str = Form("English"),
+             doctor: str = Form("recorded", max_length=10)):
+    s = session(request)
+    check_csrf(s, csrf)
+    p = valid_patient(ref)
+    doctor = doctor_choice(doctor)
     if language not in LANGUAGES:
         raise HTTPException(404)
     result, _ = current_result(p, s["user"])
     sheet = make_sheet(p, s["user"], LANGUAGE_KEYS[language], result)
     audit.write("briefing_requested", user=s["user"], patient=ref, language=language,   # never the text
                 used_llm=sheet["used_llm"], warnings=len(sheet["warnings"]), latency_s=sheet["latency_s"])
-    return patient_view(request, s, p, briefing=sheet, language=language)
+    return patient_view(request, s, p, briefing=sheet, language=language, doctor=doctor)
 
 
 @app.post("/patient/{ref}/why", response_class=HTMLResponse)
-def why(request: Request, ref: str, csrf: str = Form(...), question: str = Form(..., max_length=MAX_QUESTION)):
+def why(request: Request, ref: str, csrf: str = Form(...), question: str = Form(..., max_length=MAX_QUESTION),
+        doctor: str = Form("recorded", max_length=10)):
     s = session(request)
     check_csrf(s, csrf)
     p = valid_patient(ref)
+    doctor = doctor_choice(doctor)
     question = question.strip()
     if not question:
         raise HTTPException(404)
     result, _ = current_result(p, s["user"])
     out = ask(p, s["user"], question, result)
     audit.write("ask_why", user=s["user"], patient=ref, used_llm=out["used_llm"])   # never the question text
-    return patient_view(request, s, p, why=out, question=question)
+    return patient_view(request, s, p, why=out, question=question, doctor=doctor)
 
 
 @app.get("/audit", response_class=HTMLResponse)
