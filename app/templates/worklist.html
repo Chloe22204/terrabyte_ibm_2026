@@ -53,23 +53,48 @@
   </a>
 </div>
 
-<form class="filters" method="get" action="/">
-  <label>Decision
-    <select name="decision">
-      <option value="">All</option>
-      {% for d in decisions %}<option value="{{ d }}"{% if d == decision %} selected{% endif %}>{{ d }}</option>{% endfor %}
-    </select>
-  </label>
-  <label>Diagnosis
-    <select name="dz">
-      <option value="">All</option>
-      {% for g in dz_groups %}<option value="{{ g }}"{% if g == dz %} selected{% endif %}>{{ g }}</option>{% endfor %}
-    </select>
-  </label>
-  <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Where doctors and AI differ</label>
-  <button class="secondary" type="submit">Apply</button>
-  <a href="/">Clear</a>
-</form>
+{# filter menus: <details> opens without JavaScript; each option is a link that keeps the other filters #}
+{% set g1 = "1" if gap else "" %}
+<div class="filters">
+  <div class="field">
+    <span class="field-label" id="lbl-decision">Decision</span>
+    <details class="menu">
+      <summary aria-describedby="lbl-decision">
+        {% if decision %}<span class="badge {{ info[decision][0] }}">{{ decision }}</span>{% else %}All decisions{% endif %}
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      <div class="menu-panel">
+        <a class="menu-item{% if not decision %} on{% endif %}" href="/?decision=&dz={{ dz | urlencode }}&gap={{ g1 }}">
+          <span class="mi-label">All decisions</span><span class="mi-count">{{ total }}</span></a>
+        {% for d in decisions %}
+        <a class="menu-item {{ info[d][0] }}{% if d == decision %} on{% endif %}" href="/?decision={{ d | urlencode }}&dz={{ dz | urlencode }}&gap={{ g1 }}">
+          <span class="mi-label"><span class="mi-dot" aria-hidden="true"></span>{{ d }}</span><span class="mi-count">{{ counts[d] }}</span></a>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  <div class="field">
+    <span class="field-label" id="lbl-dz">Diagnosis</span>
+    <details class="menu">
+      <summary aria-describedby="lbl-dz">{{ dz or "All diagnoses" }}<span class="chev" aria-hidden="true"></span></summary>
+      <div class="menu-panel">
+        <a class="menu-item{% if not dz %} on{% endif %}" href="/?decision={{ decision | urlencode }}&dz=&gap={{ g1 }}">
+          <span class="mi-label">All diagnoses</span><span class="mi-count">{{ total }}</span></a>
+        {% for g in dz_groups %}
+        <a class="menu-item{% if g == dz %} on{% endif %}" href="/?decision={{ decision | urlencode }}&dz={{ g | urlencode }}&gap={{ g1 }}">
+          <span class="mi-label">{{ g }}</span><span class="mi-count">{{ dz_counts[g] }}</span></a>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  <form class="gapform" method="get" action="/">
+    <input type="hidden" name="decision" value="{{ decision }}">
+    <input type="hidden" name="dz" value="{{ dz }}">
+    <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Where doctors and AI differ</label>
+    <button class="secondary" type="submit">Apply</button>
+  </form>
+  <a class="clear" href="/">Clear</a>
+</div>
 
 <p class="note">{{ n }} patients. Prognostic discordance: the doctor's recorded 6-month survival estimate is at least
   {{ (gap_threshold * 100) | round | int }} percentage points higher than the model's.</p>

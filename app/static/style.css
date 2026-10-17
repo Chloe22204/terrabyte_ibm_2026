@@ -148,10 +148,9 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0; mar
 
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3); margin-bottom: var(--s2); }
 .filters label { margin: 0; }
-.filters label select { display: block; margin-top: var(--s1); min-width: 180px; }
 .filters .check { display: flex; align-items: center; gap: var(--s2); color: var(--text); font-size: 0.9rem; padding-bottom: 8px; }
 .filters button { margin: 0; }
-.filters a { padding-bottom: 8px; font-size: 0.9rem; }
+.filters > a { padding-bottom: 8px; font-size: 0.9rem; }
 
 .tablewrap { overflow: auto; max-height: 70vh; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; }
@@ -321,6 +320,56 @@ button.shimmer:hover::after { animation: shimmer-again 1s ease-in-out both; }
   background-image: radial-gradient(var(--rule-strong) 1.2px, transparent 1.6px); background-size: 20px 20px;
   -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%);
   mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%); }
+
+/* Filter menus (after Magic UI): Border Beam traces the panel edge once on open,
+   options arrive like an Animated List, and the chevron turns. */
+@property --beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.filters { align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: var(--s1); }
+.field-label { font-size: 0.85rem; color: var(--muted); }
+.menu { position: relative; }
+.menu summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  min-width: 230px; padding: 7px 12px; background: var(--surface); border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm); cursor: pointer; font-size: 0.925rem; user-select: none;
+  transition: border-color 0.15s, box-shadow 0.15s; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary:hover { border-color: var(--muted); }
+.menu[open] summary { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chev { width: 8px; height: 8px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-2px) rotate(45deg); transition: transform 0.2s ease; flex: none; }
+.menu[open] .chev { transform: translateY(2px) rotate(225deg); }
+
+.menu-panel { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 100%; width: max-content;
+  padding: 6px; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--r); box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.06);
+  animation: menu-in 0.18s ease-out; }
+/* the beam: a bright arc on a conic gradient, masked down to a 1.5px ring, swept once around the panel */
+.menu-panel::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--beam-angle), transparent 0deg, var(--accent) 50deg, transparent 100deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: beam-sweep 1.6s linear forwards; }
+@keyframes beam-sweep { from { --beam-angle: 0deg; opacity: 1; } 85% { opacity: 1; } to { --beam-angle: 360deg; opacity: 0; } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+
+.menu-item { display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+  padding: 8px 10px; border-radius: var(--r-sm); color: var(--text); text-decoration: none; font-size: 0.925rem;
+  animation: item-in 0.28s ease-out backwards; }
+.menu-item:nth-child(2) { animation-delay: 0.03s; } .menu-item:nth-child(3) { animation-delay: 0.06s; }
+.menu-item:nth-child(4) { animation-delay: 0.09s; } .menu-item:nth-child(5) { animation-delay: 0.12s; }
+.menu-item:nth-child(6) { animation-delay: 0.15s; } .menu-item:nth-child(7) { animation-delay: 0.18s; }
+.menu-item:nth-child(n+8) { animation-delay: 0.21s; }
+@keyframes item-in { from { opacity: 0; transform: translateX(-6px); filter: blur(3px); } }
+.menu-item:hover, .menu-item:focus-visible { background: var(--tier-bg, var(--accent-soft)); color: var(--text); outline: none; }
+.menu-item.on { font-weight: 600; }
+.menu-item.on .mi-count::after { content: " ✓"; color: var(--accent); }
+.mi-label { display: inline-flex; align-items: center; gap: 8px; }
+.mi-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tier-dot); flex: none; }
+.mi-count { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gapform { display: flex; align-items: center; gap: var(--s3); margin: 0; }
+.gapform .check { margin: 0; padding: 0; }
+.gapform button { margin: 0; }
+.filters .clear { padding-bottom: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; }

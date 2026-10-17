@@ -548,7 +548,8 @@ def worklist_view(request, s, decision="", dz="", gap="", page=1, bench=None):
     return templates.TemplateResponse(request, "worklist.html", {
         "s": s, "rows": rows[(page - 1) * PAGE_SIZE: page * PAGE_SIZE], "n": len(rows), "page": page,
         "pages": pages, "decision": decision, "dz": dz, "gap": gap == "1", "decisions": DECISIONS,
-        "dz_groups": DZ_GROUPS, "counts": counts, "n_gap": sum(p["gap_flag"] for p in PATIENTS.values()),
+        "dz_groups": DZ_GROUPS, "counts": counts,
+        "dz_counts": {g: sum(p["dz"] == g for p in PATIENTS.values()) for g in DZ_GROUPS}, "total": len(PATIENTS), "n_gap": sum(p["gap_flag"] for p in PATIENTS.values()),
         "info": DECISION_INFO, "gap_threshold": GAP, "mode": "LinuxONE API" if USE_API else "local scorer",
         "system": system_status(), "bench": bench, "bench_n": BENCH_N})
 
