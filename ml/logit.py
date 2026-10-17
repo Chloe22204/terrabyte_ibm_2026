@@ -2,8 +2,9 @@
 L2-regularised logistic regression for "died within 6 months", saved as plain JSON.
 
 Why this is the main model: SUPPORT2 follows every patient to death or past 6 months, so a
-direct 6-month classifier loses nothing to censoring, and on the same test split it beat the
-Cox model (AUC 0.815 vs 0.803). Fitting uses scikit-learn; prediction needs only numpy, so the
+direct 6-month classifier loses nothing to censoring, and every factor is explainable. The Cox
+model scores about the same (test AUC within noise), so it is kept only for the survival-curve
+shape. Fitting uses scikit-learn; prediction needs only numpy, so the
 API container stays small and there is no pickle.
 """
 import json
