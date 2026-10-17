@@ -3,6 +3,16 @@
 **AI that tells clinicians when a seriously ill patient is ready for the care-planning conversation, how sure it is, and how to begin.**
 Everything, including the LLM, runs inside one isolated IBM LinuxONE (z17) server, so patient data never leaves it.
 
+Event code: SSF2026
+
+## Theme and why IBM Z
+
+**Theme: Wildcard (Beyond the Obvious).** Why LinuxONE:
+- **Patient data stays on one isolated server.** Training, scoring, the API and the dashboard all run on the same LinuxONE VM.
+- **The LLM runs locally.** IBM Granite runs on the VM through llama.cpp, with no external API.
+- **The AI accelerator (NNPA) is available** on the z17 (`nnpa` CPU flag, screenshot 06).
+- **Scoring is fast:** about 1,490 patients per second on the z17 (screenshot 05).
+
 ## Architecture
 
 ```
@@ -27,22 +37,57 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
 ## Run it
 
 ```bash
-# 1. data: download SUPPORT2 from https://archive.ics.uci.edu/dataset/880 → data/support2.csv
-# 2. train + evaluate (≈1 min on 3 vCPUs)
+# 1. data: download https://hbiostat.org/data/repo/support2csv.zip, unzip it, save the support2.csv inside as data/support2.csv
+# 2. train + evaluate (≈1 min on 3 vCPUs). artifacts/bootstraps/ is not in git: on a fresh clone run this
+#    (with --bootstraps 20) before building the container, otherwise the uncertainty ranges are missing
 python ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
 # 3. optional: accelerator second-opinion model
 python ml/accelerator_model.py --data data/support2.csv --out artifacts
-# 4. API in a container
-podman build -t timetotalk-api -f api/Containerfile .
+# 4. API in a container (Containerfile.ubuntu: python:3.11-slim has no s390x numpy wheel, so we use Ubuntu's s390x packages)
+podman build -t timetotalk-api -f api/Containerfile.ubuntu .
 podman run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=$(openssl rand -hex 24) -e TTT_ID_SALT=$(openssl rand -hex 16) timetotalk-api
 curl localhost:8000/health
 ```
+
+## Proof it runs on IBM Z (LinuxONE z17)
+
+All screenshots are from our LinuxONE VM (`toeboon`).
+
+**01 — s390x on z17.** `uname -m` and `lscpu` show s390x, machine type 9175 (IBM z17); the API's `/health` on that machine reports 20 bootstrap models and the XGBoost second opinion loaded.
+![s390x, machine type 9175](screenshots/01_ibmz_s390x_z17.png)
+
+**02 — Four patients, one per decision tier.** Test patients scored through the API: Conversation due now, Review in 2 weeks, No action and Doctor judgement, each with its 80% range, second opinion and top factors, in 0.7–2.2 ms.
+![Four patients scored](screenshots/02_four_patients.png)
+
+**03 — Doctor + AI.** The same patient with the doctor's estimate added: model 85%, doctor 60%, combined 73%.
+![Doctor plus AI](screenshots/03_doctor_plus_ai.png)
+
+**04 — Security.** A request with a wrong token gets HTTP 401; the audit log records each score with a hashed patient ID, decision and latency, and no clinical values.
+![401 and audit log](screenshots/04_security_401_audit.png)
+
+**05 — Speed.** The API benchmark scores 1,000 patients in 0.67 s: about 1,490 patients per second, 0.67 ms each.
+![Speed benchmark](screenshots/05_speed_benchmark.png)
+
+**06 — AI accelerator.** `lscpu` lists the `nnpa` flag (the z17's on-chip AI accelerator) on s390x, machine type 9175.
+![NNPA flag](screenshots/06_ai_accelerator_nnpa.png)
+
+**07 — Training on z17.** The full training run (thresholds, fairness audit) takes 2.2 s; `ml/combo.py` on the 1,497 patients with a doctor estimate gives doctor AUC 0.786, model 0.795, combined 0.831.
+![Training and doctor plus AI on z17](screenshots/07_training_and_doctor_plus_ai_on_z17.png)
+
+**08 — Stress test.** 600 concurrent dashboard requests (median 76 ms, p95 126 ms); password spraying locked out after 20 attempts; all 1,821 test patients scored in 1.3 s (1,381 patients/s, including 20 bootstrap models + XGBoost). 6 tests passed.
+![Stress test](screenshots/08_stress_test_z17.png)
+
+**API health on s390x.** The API's `/health` reports machine s390x, 20 bootstrap models, second opinion loaded and Granite connected (`"ok": true`).
+![API health with Granite connected](screenshots/container_screenshot.png)
+
+**Granite prep sheet on LinuxONE.** Granite generates prep sheets on the VM (`Granite used: True`, 91–99 s each) in Malay and Tamil. The Tamil output is garbled, which is why Tamil was removed.
+![Granite prep sheet](screenshots/genai_prepsheet.jpg)
 
 ## Decisions log (what we chose, what we rejected, and why)
 
 | Decision | Why |
 |---|---|
-| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.815 vs 0.803). Every factor is still explainable, so a clinician can check it. |
+| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.813 vs 0.804). Every factor is still explainable, so a clinician can check it. |
 | Cox model kept only for the **survival-curve shape** | The dashboard shows a curve over a year. The Cox curve is rescaled to pass through the logistic 6-month risk, so the two never disagree. |
 | Wrote our own numpy/scipy Cox model instead of `lifelines` | `lifelines` needs `autograd-gamma`, which failed to build in testing. Ours has no compiled dependencies, so it runs on s390x. |
 | All models saved as plain JSON | No pickle files in the API (a pickle can run code when loaded), and the container needs only numpy. |

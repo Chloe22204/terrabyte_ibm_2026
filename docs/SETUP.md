@@ -149,12 +149,13 @@ How it works: the score feeds `genai/retriever.py`, which finds matching passage
 ## 5. Run the API in a container
 ```bash
 cd ~/terrabyte_ibm_2026
-podman build -t timetotalk-api -f api/Containerfile .
+podman build -t timetotalk-api -f api/Containerfile.ubuntu .
 export TTT_API_TOKEN=$(openssl rand -hex 24)
 podman run -d --name ttt --network host \
   -e TTT_API_TOKEN=$TTT_API_TOKEN -e TTT_ID_SALT=$(openssl rand -hex 16) timetotalk-api
 ```
 `--network host` lets the container reach Granite at 127.0.0.1:8080.
+`api/Containerfile.ubuntu` is the s390x-safe build: `python:3.11-slim` has no numpy wheel or compiler for s390x, so it installs numpy, scipy and xgboost from Ubuntu's s390x packages instead.
 
 ```bash
 curl -s localhost:8000/health                       # shows machine s390x and granite ok: true
