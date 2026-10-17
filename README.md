@@ -3,6 +3,16 @@
 **AI that tells clinicians when a seriously ill patient is ready for the care-planning conversation, how sure it is, and how to begin.**
 Everything, including the LLM, runs inside one isolated IBM LinuxONE (z17) server, so patient data never leaves it.
 
+Event code: SSF2026
+
+## Theme and why IBM Z
+
+**Theme: Wildcard (Beyond the Obvious).** Why LinuxONE:
+- **Patient data stays on one isolated server.** Training, scoring, the API and the dashboard all run on the same LinuxONE VM.
+- **The LLM runs locally.** IBM Granite runs on the VM through llama.cpp, with no external API.
+- **The AI accelerator (NNPA) is available** on the z17 (`nnpa` CPU flag, screenshot 06).
+- **Scoring is fast:** about 1,490 patients per second on the z17 (screenshot 05).
+
 ## Architecture
 
 ```
