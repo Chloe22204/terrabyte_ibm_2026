@@ -1,0 +1,80 @@
+{
+ "n_total": 9105,
+ "n_train": 5463,
+ "n_val": 1821,
+ "n_test": 1821,
+ "n_features": 50,
+ "cox_c_index_test": 0.7319170654263341,
+ "cox_auc_6m_test": 0.8040387354306144,
+ "recalibration_check_on_validation": {
+  "mae_raw": 0.04434074700892065,
+  "mae_isotonic": 0.04034759535584761,
+  "used": true
+ },
+ "auc_6m_test_after_recalibration": 0.8028706412951856,
+ "calibration_mean_abs_error_before": 0.036754393040193,
+ "calibration_mean_abs_error_after": 0.04717226242121656,
+ "xgb_auc_6m_test": 0.8130141067501188,
+ "decision_counts_test": {
+  "No action": 672,
+  "Conversation due now": 538,
+  "Review in 2 weeks": 451,
+  "Clinician judgement": 160
+ },
+ "died_6m_rate_[Conversation due now]": 0.8011152416356877,
+ "died_6m_rate_[Review in 2 weeks]": 0.44567627494456763,
+ "died_6m_rate_[No action]": 0.19047619047619047,
+ "died_6m_rate_[Clinician judgement]": 0.58125,
+ "auprc_6m_test": 0.769293175170749,
+ "brier_6m_test": 0.18157903497775332,
+ "flag_sensitivity_test": 0.7409144196951934,
+ "flag_specificity_test": 0.631198347107438,
+ "flag_ppv_test": 0.6390293225480284,
+ "flag_rate_test": 0.543108182317408,
+ "physician_n": 1497,
+ "physician_auc_6m": 0.7864998120872632,
+ "model_auc_6m_same_patients": 0.7954972528947509,
+ "physician_mean_predicted_survival_6m": 0.4994888196392785,
+ "actual_survival_6m_same_patients": 0.5257181028724115,
+ "model_mean_predicted_survival_6m": 0.5319852935078803,
+ "pct_of_6m_deaths_physician_gave_>=50pct_survival": 0.38309859154929576,
+ "pct_of_6m_deaths_model_flagged_due_or_review": 0.7352112676056338,
+ "same_budget_n_flagged": 808,
+ "same_budget_deaths": 710,
+ "same_budget_model_caught": 522,
+ "same_budget_physician_caught": 546,
+ "problem_deaths_within_6m": 4265,
+ "problem_pct_died_6m_with_no_dnr": 0.37280187573270807,
+ "problem_pct_dnr_written_in_last_7_days_of_life": 0.3514654161781946,
+ "problem_median_days_dnr_to_death": 5.0,
+ "days_earlier_n": 281,
+ "days_earlier_median": 1.0,
+ "days_earlier_pct_positive": 0.5160142348754448,
+ "flagged_due_now_died_without_any_dnr": 129
+}
+
+Thresholds: {
+ "t_high": 0.4549999999999999,
+ "t_mid": 0.33999999999999997,
+ "max_interval_width": 0.15845875199612075,
+ "max_model_disagreement": 0.25,
+ "how_chosen": {
+  "t_high": "lowest 6-month risk where >= 75% of flagged validation patients died within 6 months",
+  "t_mid": "highest threshold that still catches >= 80% of validation deaths within 6 months",
+  "max_interval_width": "90th percentile of bootstrap 80%-interval width on validation (about 1 in 10 patients is 'too uncertain')",
+  "max_model_disagreement": "Cox and XGBoost 6-month risks differ by more than 25 percentage points",
+  "note": "These are design choices. A hospital can tune them to its own capacity and values."
+ }
+}
+
+Fairness:
+   group    level    n      auc  sensitivity  flag_rate  mean_predicted_risk  observed_6m_death_rate
+age band    50-64  539 0.785820     0.732794   0.526902             0.456136                0.458256
+age band    65-79  703 0.769612     0.753582   0.608819             0.511174                0.496444
+age band      80+  207 0.855836     0.894309   0.743961             0.574468                0.594203
+age band      <50  372 0.837843     0.582090   0.330645             0.359199                0.360215
+     sex   female  807 0.805396     0.722646   0.527881             0.468499                0.486989
+     sex     male 1014 0.801703     0.756522   0.555227             0.473048                0.453649
+    race    black  276 0.809265     0.714286   0.467391             0.429414                0.431159
+    race hispanic   57 0.798750     0.440000   0.368421             0.404222                0.438596
+    race    white 1444 0.800873     0.754386   0.563019             0.479514                0.473684
