@@ -5,6 +5,7 @@ Loads everything from plain JSON files produced by train.py. Needs only numpy (+
 import glob, json, os
 import numpy as np
 from coxph import CoxPH
+from logit import LogisticModel, anchor_curve
 
 CURVE_DAYS = [0, 15, 30, 60, 90, 120, 180, 270, 365]
 
@@ -12,13 +13,14 @@ CURVE_DAYS = [0, 15, 30, 60, 90, 120, 180, 270, 365]
 class TimeToTalkScorer:
     def __init__(self, artifacts_dir):
         a = artifacts_dir
-        self.cox = CoxPH.from_json(f"{a}/cox_model.json")
+        self.model = LogisticModel.from_json(f"{a}/logit_model.json")   # main 6-month risk
+        self.cox = CoxPH.from_json(f"{a}/cox_model.json")               # survival-curve shape only
         pre = json.load(open(f"{a}/preprocess.json"))
         self.features, self.fills = pre["features"], pre["fill_values"]
         cal = json.load(open(f"{a}/calibrator.json"))
         self.cal_x, self.cal_y = cal["x"], cal["y"]
         self.th = json.load(open(f"{a}/thresholds.json"))
-        self.boots = [CoxPH.from_json(p) for p in sorted(glob.glob(f"{a}/bootstraps/cox_*.json"))]
+        self.boots = [LogisticModel.from_json(p) for p in sorted(glob.glob(f"{a}/bootstraps/logit_*.json"))]
         self.xgb = None
         if os.path.exists(f"{a}/xgb_6m.json"):
             try:
@@ -50,10 +52,11 @@ class TimeToTalkScorer:
 
     def score(self, patient: dict) -> dict:
         x = self.vectorize(patient).reshape(1, -1)
-        S = self.cox.predict_survival(x, CURVE_DAYS)[0]
-        risk = float(self._calib(1 - self.cox.predict_survival(x, [180])[0, 0]))
+        risk = float(self._calib(self.model.predict_proba(x)[0]))
+        # Cox curve shape, rescaled so it passes through the main model's 6-month risk
+        S = anchor_curve(self.cox.predict_survival(x, CURVE_DAYS), self.cox.predict_survival(x, [180])[:, 0], [risk])[0]
         if self.boots:
-            br = [float(self._calib(1 - m.predict_survival(x, [180])[0, 0])) for m in self.boots]
+            br = [float(self._calib(m.predict_proba(x)[0])) for m in self.boots]
             lo, hi = float(np.percentile(br, 10)), float(np.percentile(br, 90))
         else:
             lo = hi = risk
@@ -72,16 +75,16 @@ class TimeToTalkScorer:
         else:
             decision = "No action"
 
-        contrib = self.cox.contributions(x[0])
+        contrib = self.model.contributions(x[0])
         top = sorted(contrib.items(), key=lambda kv: -abs(kv[1]))[:5]
         return {
             "risk_6m": risk, "risk_6m_interval_80": [lo, hi],
-            "survival_2m": float(1 - self._calib(1 - S[CURVE_DAYS.index(60)])),
+            "survival_2m": float(S[CURVE_DAYS.index(60)]),
             "survival_6m": 1 - risk,
             "survival_curve": {"days": CURVE_DAYS, "survival": [float(s) for s in S]},
             "second_opinion_risk_6m": second, "models_disagree": bool(disagree),
             "decision": decision,
             "top_factors": [{"feature": k, "effect": "raises risk" if v > 0 else "lowers risk",
-                             "log_hazard_contribution": float(v)} for k, v in top],
+                             "log_odds_contribution": float(v)} for k, v in top],
             "thresholds": {k: th[k] for k in ["t_high", "t_mid", "max_interval_width", "max_model_disagreement"]},
         }

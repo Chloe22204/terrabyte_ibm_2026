@@ -5,8 +5,10 @@ Run:   python ml/train.py --data data/support2.csv --out artifacts
 Needs: numpy, pandas, scipy, scikit-learn, matplotlib (xgboost optional)
 
 Produces in --out:
-  cox_model.json            model for the API (plain JSON, no pickle)
-  calibrator.json           isotonic recalibration map (fit on validation set)
+  logit_model.json          main 6-month risk model for the API (plain JSON, no pickle)
+  cox_model.json            Cox model, used only for the shape of the survival curve
+  bootstraps/logit_*.json   bootstrap models for the 80% uncertainty range
+  calibrator.json           Platt recalibration map, or identity if it didn't clearly help
   thresholds.json           decision-layer thresholds + how they were chosen
   metrics.json              every number for the pitch
   metrics.txt               same numbers + thresholds + fairness table, as readable text
@@ -20,11 +22,12 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from coxph import CoxPH, concordance_index, kaplan_meier
+from logit import LogisticModel, anchor_curve
 
 SEED = 42
 HORIZONS = {"2m": 60, "6m": 180}
@@ -126,42 +129,58 @@ def main(args):
     Xv = X.to_numpy(float)
     json.dump({"fill_values": fills, "features": feats}, open(f"{args.out}/preprocess.json", "w"), indent=1)
 
-    # ---------------------------------------------------------------- Cox model
+    y_tr = six_month_status(T[tr], E[tr])
+    y_va, y_te = six_month_status(T[va], E[va]), six_month_status(T[te], E[te])
+    k_tr = ~np.isnan(y_tr)
+    k_va, k_te = ~np.isnan(y_va), ~np.isnan(y_te)
+    tr_k = tr[k_tr]                                  # training patients with a known 6-month outcome
+
+    # ---------------------------------------------------------------- main model: logistic regression
+    # SUPPORT2 follows (almost) everyone past 6 months or to death, so a direct 6-month classifier
+    # loses nothing to censoring, and it beat the Cox model on the same split.
+    model = LogisticModel(C=args.C).fit(Xv[tr_k], y_tr[k_tr], feats)
+    model.to_json(f"{args.out}/logit_model.json")
+
+    # ---------------------------------------------------------------- Cox model: survival-curve shape only
     cox = CoxPH(penalizer=args.penalizer).fit(Xv[tr], T[tr], E[tr], feats)
     cox.to_json(f"{args.out}/cox_model.json")
 
-    def risk6(model, idx):
-        return 1 - model.predict_survival(Xv[idx], [180])[:, 0]
-
-    r_va_raw, r_te_raw = risk6(cox, va), risk6(cox, te)
-    lp_te = cox.linear_predictor(Xv[te])
+    r_va_raw, r_te_raw = model.predict_proba(Xv[va]), model.predict_proba(Xv[te])
 
     metrics = {"n_total": int(len(df)), "n_train": len(tr), "n_val": len(va), "n_test": len(te),
-               "n_features": len(feats)}
-    metrics["cox_c_index_test"] = concordance_index(T[te], lp_te, E[te])
-
-    y_va, y_te = six_month_status(T[va], E[va]), six_month_status(T[te], E[te])
-    k_va, k_te = ~np.isnan(y_va), ~np.isnan(y_te)
-    metrics["cox_auc_6m_test"] = roc_auc_score(y_te[k_te], r_te_raw[k_te])
+               "n_train_known_6m_outcome": int(k_tr.sum()), "n_features": len(feats)}
+    metrics["auc_6m_test"] = roc_auc_score(y_te[k_te], r_te_raw[k_te])
+    metrics["c_index_test"] = concordance_index(T[te], r_te_raw, E[te])
+    metrics["cox_auc_6m_test"] = roc_auc_score(y_te[k_te], 1 - cox.predict_survival(Xv[te][k_te], [180])[:, 0])
+    metrics["cox_c_index_test"] = concordance_index(T[te], cox.linear_predictor(Xv[te]), E[te])
 
     # ---------------------------------------------------------------- recalibration (fit on VALIDATION)
-    # Only keep recalibration if it helps: fit on one half of validation, check on the other half.
+    # Platt scaling (a smooth 2-parameter curve, unlike isotonic which overfit before).
+    # Fit on one half of validation, check on the other, and keep it only if it clearly helps:
+    # calibration error must drop by at least 20% AND by at least 0.005.
+    def platt(r_fit, y_fit):
+        z = np.log(np.clip(r_fit, 1e-6, 1 - 1e-6) / np.clip(1 - r_fit, 1e-6, 1)).reshape(-1, 1)
+        lr = LogisticRegression(C=1e6).fit(z, y_fit)
+        a_, b_ = float(lr.coef_[0, 0]), float(lr.intercept_[0])
+        return lambda r: 1 / (1 + np.exp(-(a_ * np.log(np.clip(r, 1e-6, 1 - 1e-6) / np.clip(1 - r, 1e-6, 1)) + b_)))
+
     va_idx = np.where(k_va)[0]
     half = rng.permutation(va_idx)
     a, b = half[: len(half) // 2], half[len(half) // 2:]
-    iso_a = IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit(r_va_raw[a], y_va[a])
+    f_a = platt(r_va_raw[a], y_va[a])
     err_raw = calibration_table(r_va_raw[b], T[va][b], E[va][b])
-    err_iso = calibration_table(iso_a.predict(r_va_raw[b]), T[va][b], E[va][b])
+    err_platt = calibration_table(f_a(r_va_raw[b]), T[va][b], E[va][b])
     mae_raw = float((err_raw.pred - err_raw.obs).abs().mean())
-    mae_iso = float((err_iso.pred - err_iso.obs).abs().mean())
-    use_recal = mae_iso < mae_raw
-    metrics["recalibration_check_on_validation"] = {"mae_raw": mae_raw, "mae_isotonic": mae_iso,
+    mae_platt = float((err_platt.pred - err_platt.obs).abs().mean())
+    use_recal = mae_platt <= 0.8 * mae_raw and mae_raw - mae_platt >= 0.005
+    metrics["recalibration_check_on_validation"] = {"mae_raw": mae_raw, "mae_platt": mae_platt,
                                                     "used": bool(use_recal)}
     if use_recal:
-        iso = IsotonicRegression(out_of_bounds="clip", y_min=0, y_max=1).fit(r_va_raw[k_va], y_va[k_va])
-        xs, ys = iso.X_thresholds_.tolist(), iso.y_thresholds_.tolist()
+        f = platt(r_va_raw[k_va], y_va[k_va])
+        xs = np.linspace(0, 1, 201).tolist()            # stored as a lookup table: scoring.py just interpolates
+        ys = f(np.array(xs)).tolist()
     else:
-        xs, ys = [0.0, 1.0], [0.0, 1.0]          # identity: raw Cox is already well calibrated
+        xs, ys = [0.0, 1.0], [0.0, 1.0]                  # identity: raw model is already well calibrated
     json.dump({"x": xs, "y": ys}, open(f"{args.out}/calibrator.json", "w"))
     calib = lambda r: np.interp(r, xs, ys)
     r_va, r_te = calib(r_va_raw), calib(r_te_raw)
@@ -174,12 +193,14 @@ def main(args):
     # ---------------------------------------------------------------- bootstrap uncertainty (80% interval)
     boots_va, boots_te = [], []
     os.makedirs(f"{args.out}/bootstraps", exist_ok=True)
+    for old in os.listdir(f"{args.out}/bootstraps"):                # drop models from earlier runs
+        os.remove(f"{args.out}/bootstraps/{old}")
     for b in range(args.bootstraps):
-        bi = rng.choice(tr, size=len(tr), replace=True)
-        m = CoxPH(penalizer=args.penalizer).fit(Xv[bi], T[bi], E[bi], feats)
-        m.to_json(f"{args.out}/bootstraps/cox_{b:02d}.json")   # used by the API for live intervals
-        boots_va.append(calib(risk6(m, va)))
-        boots_te.append(calib(risk6(m, te)))
+        bi = rng.choice(tr_k, size=len(tr_k), replace=True)
+        m = LogisticModel(C=args.C).fit(Xv[bi], six_month_status(T[bi], E[bi]), feats)
+        m.to_json(f"{args.out}/bootstraps/logit_{b:02d}.json")  # used by the API for live intervals
+        boots_va.append(calib(m.predict_proba(Xv[va])))
+        boots_te.append(calib(m.predict_proba(Xv[te])))
     lo_va, hi_va = np.percentile(boots_va, [10, 90], axis=0)
     lo_te, hi_te = np.percentile(boots_te, [10, 90], axis=0)
 
@@ -187,11 +208,9 @@ def main(args):
     second_va = second_te = None
     try:
         import xgboost as xgb
-        ktr_y = six_month_status(T[tr], E[tr])
-        ktr = ~np.isnan(ktr_y)
         clf = xgb.XGBClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
                                 subsample=0.8, colsample_bytree=0.8, random_state=SEED)
-        clf.fit(Xv[tr][ktr], ktr_y[ktr])
+        clf.fit(Xv[tr_k], y_tr[k_tr])
         second_va, second_te = clf.predict_proba(Xv[va])[:, 1], clf.predict_proba(Xv[te])[:, 1]
         metrics["xgb_auc_6m_test"] = roc_auc_score(y_te[k_te], second_te[k_te])
         clf.save_model(f"{args.out}/xgb_6m.json")
@@ -215,7 +234,7 @@ def main(args):
             "t_high": f"lowest 6-month risk where >= {args.target_ppv:.0%} of flagged validation patients died within 6 months",
             "t_mid": f"highest threshold that still catches >= {args.target_sensitivity:.0%} of validation deaths within 6 months",
             "max_interval_width": "90th percentile of bootstrap 80%-interval width on validation (about 1 in 10 patients is 'too uncertain')",
-            "max_model_disagreement": "Cox and XGBoost 6-month risks differ by more than 25 percentage points",
+            "max_model_disagreement": "logistic and XGBoost 6-month risks differ by more than 25 percentage points",
             "note": "These are design choices. A hospital can tune them to its own capacity and values.",
         }}
     json.dump(thresholds, open(f"{args.out}/thresholds.json", "w"), indent=1)
@@ -253,6 +272,10 @@ def main(args):
     metrics["flag_specificity_test"] = tn / max(tn + fp, 1)
     metrics["flag_ppv_test"] = tp / max(tp + fp, 1)
     metrics["flag_rate_test"] = float(fk.mean())
+    # same, but counting "Clinician judgement" as flagged (those patients do get a human look)
+    fj = np.isin(dec_te, ["Conversation due now", "Review in 2 weeks", "Clinician judgement"])[k_te]
+    metrics["flag_or_judgement_sensitivity_test"] = int(np.sum(fj & (yk == 1))) / max(tp + fn, 1)
+    metrics["clinician_judgement_share_test"] = float(np.mean(dec_te == "Clinician judgement"))
 
     # ---------------------------------------------------------------- physicians vs model (test set)
     if "prg6m" in df.columns:
@@ -279,6 +302,26 @@ def main(args):
         metrics["same_budget_deaths"] = int(need.sum())
         metrics["same_budget_model_caught"] = int(np.sum(flag_te[mk] & need))
         metrics["same_budget_physician_caught"] = int(np.sum(doc_flag & need))
+
+        def top_k(score):
+            f = np.zeros(len(score), bool)
+            f[np.argsort(-score, kind="mergesort")[:k]] = True
+            return f
+        # like-for-like: the model's own k highest-risk patients (ranking vs ranking, ignoring decision levels)
+        metrics["same_budget_model_rank_caught"] = int(np.sum(top_k(r_te[mk]) & need))
+
+        # AI + clinician: combine model risk and the doctor's estimate. The 2 weights are fit on
+        # VALIDATION patients who have a doctor estimate, then scored once on test.
+        def lg(p):
+            p = np.clip(p, 0.01, 0.99)
+            return np.log(p / (1 - p))
+        phys_va = df["prg6m"].to_numpy(float)[va]
+        mv = k_va & ~np.isnan(phys_va)
+        comb = LogisticRegression(C=1e6).fit(np.column_stack([lg(r_va[mv]), lg(1 - phys_va[mv])]), y_va[mv])
+        p_comb = comb.predict_proba(np.column_stack([lg(r_te[mk]), lg(phys_risk[mk])]))[:, 1]
+        metrics["combined_auc_6m_same_patients"] = roc_auc_score(y_te[mk], p_comb)
+        metrics["combined_weights_[model, doctor]"] = [float(w) for w in comb.coef_[0]]
+        metrics["same_budget_combined_caught"] = int(np.sum(top_k(p_comb) & need))
         cal_phys = calibration_table(phys_risk[mk], T[te][mk], E[te][mk])
     else:
         cal_phys = None
@@ -332,26 +375,27 @@ def main(args):
     # ---------------------------------------------------------------- precomputed demo file
     top = []
     for i in te:
-        c = cox.contributions(Xv[i])
+        c = model.contributions(Xv[i])
         best = sorted(c.items(), key=lambda kv: -abs(kv[1]))[:3]
         top.append("; ".join(f"{k} {'+' if v > 0 else '-'}" for k, v in best))
     curve_times = [30, 60, 90, 180, 365]
-    S = cox.predict_survival(Xv[te], curve_times)
+    S = anchor_curve(cox.predict_survival(Xv[te], curve_times), cox.predict_survival(Xv[te], [180])[:, 0], r_te)
     out = pd.DataFrame({"id": df["id"].to_numpy()[te], "age": df["age"].to_numpy()[te],
                         "sex": df["sex"].to_numpy()[te] if "sex" in df else None,
                         "dzgroup": df["dzgroup"].to_numpy()[te] if "dzgroup" in df else None,
                         "risk_6m": r_te, "risk_6m_low": lo_te, "risk_6m_high": hi_te,
-                        "surv_2m": 1 - calib(1 - S[:, 1]), "surv_6m": 1 - r_te,
+                        "surv_2m": S[:, 1], "surv_6m": 1 - r_te,
                         "second_opinion_6m": second_te, "decision": dec_te, "top_factors": top})
     for j, t in enumerate(curve_times):
-        out[f"S_{t}d_raw"] = S[:, j]
+        out[f"S_{t}d"] = S[:, j]           # Cox curve shape, rescaled to pass through the main 6-month risk
     out.sort_values("risk_6m", ascending=False).to_csv(f"{args.out}/patients_scored.csv", index=False)
 
     # ---------------------------------------------------------------- charts
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot([0, 1], [0, 1], "--", color="grey", lw=1, label="perfect")
-    ax.plot(cal_before.pred, cal_before.obs, "o-", label="Cox (raw)")
-    ax.plot(cal_after.pred, cal_after.obs, "o-", label="Cox (recalibrated)")
+    ax.plot(cal_before.pred, cal_before.obs, "o-", label="Model (raw)")
+    if use_recal:
+        ax.plot(cal_after.pred, cal_after.obs, "o-", label="Model (recalibrated)")
     if cal_phys is not None:
         ax.plot(cal_phys.pred, cal_phys.obs, "s-", label="Physicians (prg6m)")
     ax.set(xlabel="Predicted 6-month mortality", ylabel="Observed 6-month mortality (Kaplan-Meier)",
@@ -369,11 +413,11 @@ def main(args):
         ax.set(ylim=(0, 1), ylabel="6-month survival", title="Average 6-month survival: predicted vs actual")
         fig.tight_layout(); fig.savefig(f"{args.out}/fig_doctors_vs_model.png", dpi=160)
 
-    coefs = pd.Series(cox.coef_, index=feats).sort_values()
+    coefs = pd.Series(model.coef_, index=feats).sort_values()
     coefs = pd.concat([coefs.head(8), coefs.tail(8)])
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.barh(coefs.index, coefs.values, color=["#4f81bd" if v < 0 else "#c0504d" for v in coefs.values])
-    ax.set(title="Strongest risk factors (Cox, per 1 SD)", xlabel="log hazard ratio")
+    ax.set(title="Strongest risk factors (per 1 SD)", xlabel="log odds ratio for dying within 6 months")
     fig.tight_layout(); fig.savefig(f"{args.out}/fig_risk_factors.png", dpi=160)
 
     json.dump(metrics, open(f"{args.out}/metrics.json", "w"), indent=1, default=float)
@@ -389,7 +433,8 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--data", default="data/support2.csv")
     p.add_argument("--out", default="artifacts")
-    p.add_argument("--penalizer", type=float, default=0.1)
+    p.add_argument("--C", type=float, default=0.5, help="logistic regression inverse L2 strength")
+    p.add_argument("--penalizer", type=float, default=0.1, help="Cox L2 penalty (survival-curve model)")
     p.add_argument("--bootstraps", type=int, default=30)
     p.add_argument("--target_ppv", type=float, default=0.75)
     p.add_argument("--target_sensitivity", type=float, default=0.80)

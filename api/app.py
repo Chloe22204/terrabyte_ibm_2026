@@ -9,7 +9,7 @@ Security measures (screenshot these for the rubric):
   - every request needs the bearer token (no token -> 401)
   - patient identifiers are SHA-256 hashed with a secret salt before logging; raw IDs never stored
   - audit log of every scoring request (who/when/decision), no clinical values written to logs
-  - all inference (Cox model + Granite) happens on this LinuxONE VM; no patient data leaves it
+  - all inference (risk models + Granite) happens on this LinuxONE VM; no patient data leaves it
 """
 import hashlib, json, logging, os, sys, time
 from fastapi import Depends, FastAPI, Header, HTTPException

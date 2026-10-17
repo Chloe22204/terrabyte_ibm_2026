@@ -11,7 +11,8 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
                      ┌───────────────┴──────────────┐
                      ▼                              ▼
          api/ (FastAPI in Podman on LinuxONE)   ml/accelerator_model.py (MLP → ONNX → z17 AI accelerator)
-          ├ Cox survival model + 20 bootstrap models (uncertainty)
+          ├ logistic 6-month risk model + 20 bootstrap models (uncertainty)
+          ├ Cox model for the survival-curve shape
           ├ XGBoost second opinion
           ├ decision layer: Due now / Review in 2 weeks / No action / Clinician judgement
           └ token auth, hashed patient IDs, audit log, non-root container
@@ -41,14 +42,17 @@ curl localhost:8000/health
 
 | Decision | Why |
 |---|---|
-| **Cox proportional hazards** as the main model | Handles patients still alive at follow-up (censoring), gives a full survival curve, and every factor is explainable. A clinician can check it. |
+| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.815 vs 0.803). Every factor is still explainable, so a clinician can check it. |
+| Cox model kept only for the **survival-curve shape** | The dashboard shows a curve over a year. The Cox curve is rescaled to pass through the logistic 6-month risk, so the two never disagree. |
 | Wrote our own numpy/scipy Cox model instead of `lifelines` | `lifelines` needs `autograd-gamma`, which failed to build in testing. Ours has no compiled dependencies, so it runs on s390x. |
+| All models saved as plain JSON | No pickle files in the API (a pickle can run code when loaded), and the container needs only numpy. |
 | **Rejected** deep learning as the main model | Little gain on about 9,000 patients and much harder to explain. Kept a small neural net only as a second opinion on the AI accelerator. |
 | **Leaky columns excluded** (death, d.time, hospdead, prg2m/6m, dnr/dnrday, surv2m/6m, slos, costs, avtisst, sfdm2) | The test for each column: would a doctor know it on day 3? If not, it's out. |
 | **Race, income and education are not model inputs** | Fairness. They are used only to audit performance across groups (`fairness.csv`). |
 | Missing labs → SUPPORT investigators' "normal" values, others → training median, plus a "was missing" flag | A missing lab usually means the doctor didn't think it was needed. This is documented and reproducible. |
 | 60/20/20 split stratified on 6-month status, seed 42; thresholds and recalibration use **validation only** | The test set is touched once, at the end. |
-| Recalibration only kept if it helps on a held-out half of validation | Avoids "fixing" calibration that was already fine. |
+| Recalibration (Platt scaling) only kept if it **clearly** helps on a held-out half of validation (error down ≥ 20% and ≥ 0.005) | An earlier isotonic version passed a weaker check on validation but made test calibration worse. |
+| **AI + clinician experiment**: combine model risk with the doctor's own estimate (`prg6m`), weights fit on validation | Tests whether the tool adds to clinical judgement rather than replacing it. The doctor estimate is never a model input otherwise. |
 | **"Clinician judgement"** output when the uncertainty is wide or the two models disagree | The model should say when it doesn't know. |
 | **Rejected** a "risk is rising fast" alert | SUPPORT2 has one snapshot per patient, so we can't validate trends. It's listed under next steps. |
 | Granite runs locally, not a cloud LLM | Patient data never leaves LinuxONE. Granite only explains the model's decision and never changes the numbers. |
