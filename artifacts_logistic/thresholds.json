@@ -1,0 +1,13 @@
+{
+ "t_high": 0.5499999999999999,
+ "t_mid": 0.35999999999999993,
+ "max_interval_width": 0.13398560086606448,
+ "max_model_disagreement": 0.25,
+ "how_chosen": {
+  "t_high": "lowest 6-month risk where >= 75% of flagged validation patients died within 6 months",
+  "t_mid": "highest threshold that still catches >= 80% of validation deaths within 6 months",
+  "max_interval_width": "90th percentile of bootstrap 80%-interval width on validation (about 1 in 10 patients is 'too uncertain')",
+  "max_model_disagreement": "logistic and XGBoost 6-month risks differ by more than 25 percentage points",
+  "note": "These are design choices. A hospital can tune them to its own capacity and values."
+ }
+}
