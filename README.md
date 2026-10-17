@@ -134,8 +134,8 @@ All screenshots are from our LinuxONE VM (`toeboon`).
 **Doctor dashboard: one patient.** Risk 80% (80% range 77–84%), XGBoost second opinion 72%, the doctor's recorded estimate (12% risk) against the model and the combined 46%, flagged as 68 points more optimistic, and the Cox survival curve over a year. Scored live in 1.6 ms.
 ![Patient page](screenshots/11_curve_factors.png)
 
-**Prep sheet in Malay, from the dashboard.** Written by Granite on the server in 134 s. Honest note: the output mixes Malay and English and stops at the length limit, which is why the page labels it a draft for the doctor to check.
-![Malay prep sheet](screenshots/12_melayu_translate.png)
+**Prep sheet in Chinese, from the dashboard.** Written by Granite on the server in 86 s, under the five headings (why now, who should be there, questions to explore, phrases to avoid, next step). The page labels it a draft for the doctor to check before use.
+![Chinese prep sheet](screenshots/12_Chinese_translate.png)
 
 **Login lockout.** After repeated wrong passwords the login locks for 15 minutes: the password-spraying defence from the stress test.
 ![Login lockout](screenshots/14_logout.jpg)
