@@ -162,7 +162,7 @@ def test_briefing_requires_csrf_and_valid_language(clinician, some_ref):
     assert clinician.post(f"/patient/{some_ref}/briefing",
                           data={"csrf": token, "language": "Klingon"}).status_code == 404
     r = clinician.post(f"/patient/{some_ref}/briefing", data={"csrf": token, "language": "Tamil (தமிழ்)"})
-    assert r.status_code == 200 and "Prompt sent to Granite" in r.text and "Tamil" in r.text
+    assert r.status_code == 200 and "Conversation prep sheet" in r.text and "Tamil" in r.text
 
 
 def test_csrf_token_from_another_session_is_rejected(client, some_ref):

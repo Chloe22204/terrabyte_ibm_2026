@@ -26,7 +26,8 @@ sys.path.insert(0, str(ROOT / "ml"))
 sys.path.insert(0, str(ROOT))
 
 from security import AuditLog, LoginGuard, SessionStore, UserStore, pseudonym, same  # noqa: E402
-from genai.prompt import build_prompt, friendly  # noqa: E402
+from genai.prompt import friendly  # noqa: E402
+from genai import prep_sheet  # noqa: E402   (retrieval + Granite + template fallback)
 
 # ---------------------------------------------------------------- configuration
 ARTIFACTS = os.environ.get("TTT_ARTIFACTS", str(ROOT / "artifacts_logistic"))
@@ -58,7 +59,10 @@ DECISION_INFO = {
     "Review in 2 weeks": ("review", "Moderate risk. Re-check in two weeks or sooner if the condition changes."),
     "No action": ("none", "Low 6-month risk on current information. No conversation prompted."),
 }
-LANGUAGES = ["English", "Chinese (中文)", "Malay (Melayu)", "Tamil (தமிழ்)"]
+LANGUAGE_KEYS = {"English": "English", "Chinese (中文)": "Chinese", "Malay (Melayu)": "Malay",
+                 "Tamil (தமிழ்)": "Tamil"}      # display label -> genai/prep_sheet.py language
+LANGUAGES = list(LANGUAGE_KEYS)
+MAX_QUESTION = 500
 PAGE_SIZE = 50
 
 # ---------------------------------------------------------------- data (test-set patients only)
@@ -186,6 +190,15 @@ def model_inputs(raw):
     return {c: (raw.get(c) if raw.get(c) not in ("", "NA", "nan") else None) for c in INPUT_COLS}
 
 
+def api_post(path, payload, timeout=10):
+    """POST to the TimeToTalk API with the bearer token (HTTPS certificates verified by default)."""
+    req = urllib.request.Request(f"{API_URL}{path}", method="POST", data=json.dumps(payload).encode(),
+                                 headers={"Authorization": f"Bearer {API_TOKEN}",
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
 def score(p, user):
     raw = RAW.get(p["id"])
     if raw is None:                                     # no raw record: fall back to the precomputed row
@@ -193,13 +206,51 @@ def score(p, user):
     inputs = model_inputs(raw)
     if not USE_API:
         return scorer.score(inputs)
-    req = urllib.request.Request(f"{API_URL}/score", method="POST",
-                                 data=json.dumps({"patient_id": p["ref"], "clinician_id": user,
-                                                  "patient": inputs}).encode(),
-                                 headers={"Authorization": f"Bearer {API_TOKEN}",
-                                          "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as r:   # HTTPS certificates verified by default
-        return json.load(r)
+    return api_post("/score", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs})
+
+
+# Granite on 3 vCPUs takes ~30-90 s per prep sheet; wait a little longer than genai/granite.py does
+LLM_WAIT = float(os.environ.get("TTT_LLM_TIMEOUT", "180")) + 30
+
+
+def clean_warnings(out):
+    """Clinicians see plain messages; technical details (URLs, error codes) go to the audit log only."""
+    for i, w in enumerate(out.get("warnings", [])):
+        if w.startswith("Granite unavailable"):
+            out["warnings"][i] = "Granite isn't running on the server right now, so this is the template version."
+    return out
+
+
+def make_sheet(p, user, language, result):
+    return clean_warnings(_make_sheet(p, user, language, result))
+
+
+def _make_sheet(p, user, language, result):
+    """Conversation prep sheet from genai/prep_sheet.py: guideline retrieval + Granite, or its
+    template fallback when Granite is down. Only model inputs are passed (summarised to an age band)."""
+    inputs = model_inputs(RAW.get(p["id"], {}))
+    if USE_API and RAW.get(p["id"]):
+        try:
+            return api_post("/prep_sheet", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs,
+                                            "language": language}, timeout=LLM_WAIT)
+        except OSError:
+            audit.write("api_unreachable", user=user, patient=p["ref"])
+            sheet = prep_sheet.make_prep_sheet(result, inputs, language, use_llm=False)
+            sheet["warnings"].insert(0, "TimeToTalk API unreachable: template prep sheet from this dashboard.")
+            return sheet
+    return prep_sheet.make_prep_sheet(result, inputs, language)
+
+
+def ask(p, user, question, result):
+    inputs = model_inputs(RAW.get(p["id"], {}))
+    if USE_API and RAW.get(p["id"]):
+        try:
+            return api_post("/ask_why", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs,
+                                         "question": question}, timeout=LLM_WAIT)
+        except OSError:
+            audit.write("api_unreachable", user=user, patient=p["ref"])
+            return prep_sheet.ask_why(result, question, inputs, use_llm=False)
+    return prep_sheet.ask_why(result, question, inputs)
 
 
 def fallback_result(p):
@@ -207,9 +258,14 @@ def fallback_result(p):
     days = [0, 30, 60, 90, 180, 365]
     factors = []
     for part in row["top_factors"].split("; "):
-        name, _, sign = part.rpartition(" ")
-        factors.append({"feature": name, "effect": "raises risk" if sign == "+" else "lowers risk",
-                        "log_odds_contribution": 1.0 if sign == "+" else -1.0})
+        if part.endswith(")"):                          # newer format: "Albumin 2.1 g/dL (raises risk)"
+            label, _, effect = part[:-1].rpartition(" (")
+            factors.append({"feature": label, "label": label, "effect": effect,
+                            "log_odds_contribution": 1.0 if effect == "raises risk" else -1.0})
+        else:                                           # older format: "alb +"
+            name, _, sign = part.rpartition(" ")
+            factors.append({"feature": name, "effect": "raises risk" if sign == "+" else "lowers risk",
+                            "log_odds_contribution": 1.0 if sign == "+" else -1.0})
     return {"risk_6m": p["risk"], "risk_6m_interval_80": [p["lo"], p["hi"]],
             "survival_2m": float(row["surv_2m"]), "survival_6m": 1 - p["risk"],
             "survival_curve": {"days": days, "survival": [1.0] + [float(row[f"S_{d}d"]) for d in days[1:]]},
@@ -237,14 +293,18 @@ def factor_bars(factors, w=220):
              "width": max(4, w * abs(f["log_odds_contribution"]) / m)} for f in factors]
 
 
-def patient_view(request, s, p, briefing=None, language="English"):
-    result = None
+def current_result(p, user):
+    """Live score (local or API); the precomputed row if that's impossible. Returns (result, live)."""
     try:
-        result = score(p, s["user"])
+        result = score(p, user)
     except OSError:
-        audit.write("api_unreachable", user=s["user"], patient=p["ref"])
-    live = result is not None
-    result = result or fallback_result(p)
+        audit.write("api_unreachable", user=user, patient=p["ref"])
+        result = None
+    return (result, True) if result is not None else (fallback_result(p), False)
+
+
+def patient_view(request, s, p, briefing=None, language="English", why=None, question=""):
+    result, live = current_result(p, s["user"])
     lo, hi = result["risk_6m_interval_80"]
     risk = result["risk_6m"]
     ctx = {"s": s, "p": p, "r": result, "live": live, "mode": "LinuxONE API" if USE_API else "local scorer",
@@ -253,18 +313,9 @@ def patient_view(request, s, p, briefing=None, language="English"):
            "bars": factor_bars(result["top_factors"]),
            "range": {"lo": 20 + 360 * lo, "hi": 20 + 360 * hi, "risk": 20 + 360 * risk,
                      "t_mid": 20 + 360 * THRESHOLDS["t_mid"], "t_high": 20 + 360 * THRESHOLDS["t_high"]},
-           "languages": LANGUAGES, "language": language, "briefing": briefing}
+           "languages": LANGUAGES, "language": language, "briefing": briefing,
+           "why": why, "question": question, "max_question": MAX_QUESTION}
     return templates.TemplateResponse(request, "patient.html", ctx)
-
-
-def summary_text(p):
-    raw = RAW.get(p["id"], {})
-    parts = [f"{p['age']}-year-old {p['sex']}", f"diagnosis group: {p['dz']}"]
-    if raw.get("num.co"):
-        parts.append(f"{raw['num.co']} other illnesses")
-    if raw.get("ca"):
-        parts.append(f"cancer status: {raw['ca']}")
-    return "; ".join(parts)
 
 
 # ---------------------------------------------------------------- routes
@@ -343,34 +394,43 @@ def worklist(request: Request, decision: str = "", dz: str = "", gap: str = "", 
 @app.get("/patient/{ref}", response_class=HTMLResponse)
 def patient(request: Request, ref: str):
     s = session(request)
+    p = valid_patient(ref)
+    audit.write("view_patient", user=s["user"], patient=ref)
+    return patient_view(request, s, p)
+
+
+def valid_patient(ref):
     if not re.fullmatch(r"[0-9a-f]{12}", ref) or ref not in PATIENTS:
         raise HTTPException(404)
-    audit.write("view_patient", user=s["user"], patient=ref)
-    return patient_view(request, s, PATIENTS[ref])
+    return PATIENTS[ref]
 
 
 @app.post("/patient/{ref}/briefing", response_class=HTMLResponse)
 def briefing(request: Request, ref: str, csrf: str = Form(...), language: str = Form("English")):
     s = session(request)
     check_csrf(s, csrf)
-    if not re.fullmatch(r"[0-9a-f]{12}", ref) or ref not in PATIENTS or language not in LANGUAGES:
+    p = valid_patient(ref)
+    if language not in LANGUAGES:
         raise HTTPException(404)
-    p = PATIENTS[ref]
-    result = None
-    try:
-        result = score(p, s["user"])
-    except OSError:
-        pass
-    result = result or fallback_result(p)
-    messages = build_prompt(result, summary_text(p), [], language.split(" (")[0])
-    text = None
-    try:                                     # hook for the Granite module (genai/briefing.py, when ready)
-        from genai.briefing import generate_briefing
-        text = generate_briefing(messages)
-    except ImportError:
-        pass
-    audit.write("briefing_requested", user=s["user"], patient=ref, language=language, generated=text is not None)
-    return patient_view(request, s, p, briefing={"text": text, "prompt": messages}, language=language)
+    result, _ = current_result(p, s["user"])
+    sheet = make_sheet(p, s["user"], LANGUAGE_KEYS[language], result)
+    audit.write("briefing_requested", user=s["user"], patient=ref, language=language,   # never the text
+                used_llm=sheet["used_llm"], warnings=len(sheet["warnings"]), latency_s=sheet["latency_s"])
+    return patient_view(request, s, p, briefing=sheet, language=language)
+
+
+@app.post("/patient/{ref}/why", response_class=HTMLResponse)
+def why(request: Request, ref: str, csrf: str = Form(...), question: str = Form(..., max_length=MAX_QUESTION)):
+    s = session(request)
+    check_csrf(s, csrf)
+    p = valid_patient(ref)
+    question = question.strip()
+    if not question:
+        raise HTTPException(404)
+    result, _ = current_result(p, s["user"])
+    out = ask(p, s["user"], question, result)
+    audit.write("ask_why", user=s["user"], patient=ref, used_llm=out["used_llm"])   # never the question text
+    return patient_view(request, s, p, why=out, question=question)
 
 
 @app.get("/audit", response_class=HTMLResponse)
