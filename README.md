@@ -195,13 +195,13 @@ So **72%** of these patients either never had the decision recorded or had it on
 ### AI + doctor: better together
 Tested on the 1,497 test patients whose doctor gave a survival estimate:
 
-| | AUC | Deaths caught when each flags the same 763 patients |
+| | AUC | Deaths caught when each flags the same 765 patients |
 |---|---|---|
 | Doctor's estimate alone | 0.786 | 524 of 710 |
-| TimeToTalk alone | 0.804 | 538 of 710 |
-| **Doctor + TimeToTalk** | **0.833** | **560 of 710** |
+| TimeToTalk alone | 0.804 | 540 of 710 |
+| **Doctor + TimeToTalk** | **0.833** | **561 of 710** |
 
-TimeToTalk matches experienced doctors from routine day-3 data, and **combining the two beats either alone**. With the same workload, the combination catches **36 more** of the patients who died than doctors alone. The two make different mistakes, so the tool sharpens clinical judgement rather than replacing it. (The combination weights are fit on validation data. A simple 50/50 average gives 0.831, from `ml/combo.py`.)
+TimeToTalk matches experienced doctors from routine day-3 data, and **combining the two beats either alone**. With the same workload, the combination catches **37 more** of the patients who died than doctors alone. The two make different mistakes, so the tool sharpens clinical judgement rather than replacing it. (The combination weights are fit on validation data. A simple 50/50 average gives 0.831, from `ml/combo.py`.)
 
 ### Fairness audit (test set)
 
