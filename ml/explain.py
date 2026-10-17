@@ -1,5 +1,5 @@
 """
-Turn raw model contributions into plain-English factors a clinician can read.
+Turn raw model contributions into plain-English factors a doctor can read.
 
 Why: the model works on encoded columns ("ca_no", "ph_missing", "dzgroup_Coma"). Shown raw,
 "ca_no (raises risk)" reads as "having no cancer raises risk" when it really means

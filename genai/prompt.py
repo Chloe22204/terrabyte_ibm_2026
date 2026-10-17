@@ -7,7 +7,7 @@ Plug-in point: reuse the lab's Granite loading code and its RAG retriever, then 
 and send `prompt` to Granite. Keep max_tokens around 350 so it finishes quickly on 3 vCPUs.
 
 Guardrails baked into the prompt:
-  - output is for CLINICIANS only, never shown to patients
+  - output is for DOCTORS only, never shown to patients
   - Granite must not change or invent the risk numbers or the decision; it only explains them
   - no prognosis statements like "will die in X months"
 """
@@ -15,7 +15,7 @@ Guardrails baked into the prompt:
 SYSTEM = """You are a clinical communication assistant inside a hospital. You help doctors and nurses \
 prepare for an advance care planning conversation with a seriously ill patient and their family.
 Rules:
-- Your reader is a clinician, never the patient.
+- Your reader is a doctor, never the patient.
 - Use ONLY the numbers and decision given to you. Never change them or invent new ones.
 - Never state how long the patient will live. Talk about uncertainty and priorities instead.
 - Base suggestions on the guideline passages provided. If they do not cover something, say so.
@@ -41,8 +41,8 @@ Write a one-page conversation prep sheet in {language} with these headings:
 4. Phrases to avoid
 5. Next step to record in the care plan
 Use short bullet points and keep the whole sheet under 200 words.
-If the recommendation is "Clinician judgement", start by saying the model is uncertain and the \
-clinician's own assessment should lead."""
+If the recommendation is "Doctor judgement", start by saying the model is uncertain and the \
+doctor's own assessment should lead."""
 
 FRIENDLY = {
     "age": "age", "num.co": "number of other illnesses", "scoma": "level of consciousness",
@@ -105,5 +105,5 @@ def build_why_prompt(score, question, patient=None):
     factors = "; ".join(factor_text(f, patient) for f in score["top_factors"][:5])
     return [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Model output: {score['decision']}, 6-month risk "
-             f"{score['risk_6m']:.0%}, factors: {factors}.\nClinician asks: {question}\n"
+             f"{score['risk_6m']:.0%}, factors: {factors}.\nDoctor asks: {question}\n"
              "Answer in under 120 words using only the model output above."}]

@@ -80,7 +80,7 @@ class TimeToTalkScorer:
         elif hi < th["t_mid"] and not disagree:
             decision = "No action"
         elif (hi - lo) > th["max_interval_width"] or disagree:
-            decision = "Clinician judgement"
+            decision = "Doctor judgement"
         elif risk >= th["t_mid"]:
             decision = "Review in 2 weeks"
         else:

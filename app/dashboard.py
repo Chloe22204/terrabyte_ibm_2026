@@ -1,5 +1,5 @@
 """
-TimeToTalk clinician dashboard (FastAPI + server-rendered HTML, no JavaScript).
+TimeToTalk doctor dashboard (FastAPI + server-rendered HTML, no JavaScript).
 
 Run from the repo root:
   export TTT_ID_SALT=<long random string>          # required: keys the patient pseudonyms
@@ -51,11 +51,11 @@ guard = LoginGuard()
 sessions = SessionStore(idle_s=int(os.environ.get("TTT_IDLE_MIN", "15")) * 60)
 audit = AuditLog(os.environ.get("TTT_DASH_AUDIT_LOG", str(HERE / "logs" / "dashboard_audit.log")))
 
-DECISIONS = ["Conversation due now", "Clinician judgement", "Review in 2 weeks", "No action"]
+DECISIONS = ["Conversation due now", "Doctor judgement", "Review in 2 weeks", "No action"]
 DECISION_INFO = {
     "Conversation due now": ("due", "High 6-month risk and the model is confident. Plan the advance care "
                                     "planning conversation now."),
-    "Clinician judgement": ("judge", "The model is uncertain (wide range or the two models disagree). "
+    "Doctor judgement": ("judge", "The model is uncertain (wide range or the two models disagree). "
                                      "Your own assessment should lead."),
     "Review in 2 weeks": ("review", "Moderate risk. Re-check in two weeks or sooner if the condition changes."),
     "No action": ("none", "Low 6-month risk on current information. No conversation prompted."),
@@ -165,7 +165,7 @@ def client_ip(request):
     return request.client.host if request.client else "unknown"
 
 
-def session(request, role="clinician"):
+def session(request, role="doctor"):
     s = sessions.get(request.cookies.get(SESSION_COOKIE))
     if not s:
         raise Redirect("/login")
@@ -209,7 +209,7 @@ def score(p, user):
     inputs = model_inputs(raw)
     if not USE_API:
         return scorer.score(inputs)
-    return api_post("/score", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs})
+    return api_post("/score", {"patient_id": p["ref"], "doctor_id": user, "patient": inputs})
 
 
 # Granite on our 3-vCPU z17 takes ~1.5-2 min per prep sheet; wait a little longer than genai/granite.py (300 s)
@@ -217,7 +217,7 @@ LLM_WAIT = float(os.environ.get("TTT_LLM_TIMEOUT", "300")) + 30
 
 
 def clean_warnings(out):
-    """Clinicians see plain messages; technical details (URLs, error codes) go to the audit log only."""
+    """Doctors see plain messages; technical details (URLs, error codes) go to the audit log only."""
     for i, w in enumerate(out.get("warnings", [])):
         if w.startswith("Granite unavailable"):
             out["warnings"][i] = "Granite isn't running on the server right now, so this is the template version."
@@ -234,7 +234,7 @@ def _make_sheet(p, user, language, result):
     inputs = model_inputs(RAW.get(p["id"], {}))
     if USE_API and RAW.get(p["id"]):
         try:
-            return api_post("/prep_sheet", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs,
+            return api_post("/prep_sheet", {"patient_id": p["ref"], "doctor_id": user, "patient": inputs,
                                             "language": language}, timeout=LLM_WAIT)
         except OSError:
             audit.write("api_unreachable", user=user, patient=p["ref"])
@@ -248,7 +248,7 @@ def ask(p, user, question, result):
     inputs = model_inputs(RAW.get(p["id"], {}))
     if USE_API and RAW.get(p["id"]):
         try:
-            return api_post("/ask_why", {"patient_id": p["ref"], "clinician_id": user, "patient": inputs,
+            return api_post("/ask_why", {"patient_id": p["ref"], "doctor_id": user, "patient": inputs,
                                          "question": question}, timeout=LLM_WAIT)
         except OSError:
             audit.write("api_unreachable", user=user, patient=p["ref"])
@@ -298,7 +298,7 @@ def factor_bars(factors, w=220):
 
 def doctor_choice(field):
     """The doctor's-estimate form field: "recorded" (the estimate on file), "none" (cleared),
-    or the clinician's own 6-month survival estimate as a whole percentage 0-100."""
+    or the doctor's own 6-month survival estimate as a whole percentage 0-100."""
     field = (field or "recorded").strip()
     if field in ("recorded", "none"):
         return field
@@ -425,7 +425,7 @@ def login(request: Request, username: str = Form(..., max_length=64), password: 
             guard.succeeded(username)
             token = sessions.create(username, role)          # fresh token on every login (no fixation)
             audit.write("login", user=username, role=role, ip=ip)
-            resp = RedirectResponse("/" if role == "clinician" else "/audit", status_code=303)
+            resp = RedirectResponse("/" if role == "doctor" else "/audit", status_code=303)
             set_cookie(resp, SESSION_COOKIE, token)
             resp.delete_cookie(PRE_COOKIE, path="/")
             return resp
@@ -496,7 +496,7 @@ def valid_patient(ref):
 
 @app.post("/patient/{ref}/doctor", response_class=HTMLResponse)
 def doctor_estimate(request: Request, ref: str, csrf: str = Form(...), doctor: str = Form(..., max_length=10)):
-    """What-if: the clinician enters their own 6-month survival estimate to see it next to the model."""
+    """What-if: the doctor enters their own 6-month survival estimate to see it next to the model."""
     s = session(request)
     check_csrf(s, csrf)
     p = valid_patient(ref)

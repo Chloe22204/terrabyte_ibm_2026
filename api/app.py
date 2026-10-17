@@ -46,13 +46,13 @@ def pseudonym(patient_id: str) -> str:
 
 class ScoreRequest(BaseModel):
     patient_id: str
-    clinician_id: str = "unknown"
+    doctor_id: str = "unknown"
     patient: dict           # SUPPORT2-style fields, e.g. {"age": 78, "sex": "female", "alb": 2.4, ...}
-    doctor_survival_6m: Optional[float] = None   # optional: clinician's own estimate (0-1) of surviving 6 months
+    doctor_survival_6m: Optional[float] = None   # optional: doctor's own estimate (0-1) of surviving 6 months
 
 
 def blend_with_doctor(result: dict, doctor_survival_6m):
-    """AI + clinician: average the model's 6-month risk with the doctor's own estimate.
+    """AI + doctor: average the model's 6-month risk with the doctor's own estimate.
     On held-out SUPPORT2 patients this beat either alone (AUC 0.831 vs 0.804 model / 0.786 doctor; ml/combo.py)."""
     if doctor_survival_6m is None:
         return {"doctor_risk_6m": None, "combined_risk_6m": None}
@@ -83,7 +83,7 @@ def score(req: ScoreRequest):
     ms = (time.perf_counter() - t0) * 1000
     pid = pseudonym(req.patient_id)
     result.update(blend_with_doctor(result, req.doctor_survival_6m))
-    logging.info(json.dumps({"event": "score", "patient": pid, "clinician": req.clinician_id,
+    logging.info(json.dumps({"event": "score", "patient": pid, "doctor": req.doctor_id,
                              "decision": result["decision"], "doctor_input": req.doctor_survival_6m is not None,
                              "latency_ms": round(ms, 2)}))
     return {"patient_ref": pid, "latency_ms": ms, **result}
@@ -97,7 +97,7 @@ def prep_sheet(req: PrepRequest):
     result = scorer.score(req.patient)
     sheet = make_prep_sheet(result, req.patient, req.language)
     pid = pseudonym(req.patient_id)
-    logging.info(json.dumps({"event": "prep_sheet", "patient": pid, "clinician": req.clinician_id,
+    logging.info(json.dumps({"event": "prep_sheet", "patient": pid, "doctor": req.doctor_id,
                              "decision": result["decision"], "language": req.language,
                              "used_llm": sheet["used_llm"], "latency_s": sheet["latency_s"],
                              "n_warnings": len(sheet["warnings"])}))
@@ -111,7 +111,7 @@ def why(req: WhyRequest):
     result = scorer.score(req.patient)
     out = ask_why(result, req.question, req.patient)
     logging.info(json.dumps({"event": "ask_why", "patient": pseudonym(req.patient_id),
-                             "clinician": req.clinician_id, "used_llm": out["used_llm"]}))
+                             "doctor": req.doctor_id, "used_llm": out["used_llm"]}))
     return out
 
 

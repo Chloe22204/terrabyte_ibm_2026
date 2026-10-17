@@ -1,6 +1,6 @@
 # TimeToTalk — terrabyters_IBM Z Datathon 2026 Project
 
-**AI that tells clinicians when a seriously ill patient is ready for the care-planning conversation, how sure it is, and how to begin.**
+**AI that tells doctors when a seriously ill patient is ready for the care-planning conversation, how sure it is, and how to begin.**
 Everything, including the LLM, runs inside one isolated IBM LinuxONE (z17) server, so patient data never leaves it.
 
 ## Architecture
@@ -14,14 +14,14 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
           ├ logistic 6-month risk model + 20 bootstrap models (uncertainty)
           ├ Cox model for the survival-curve shape
           ├ XGBoost second opinion
-          ├ decision layer: Due now / Review in 2 weeks / No action / Clinician judgement
+          ├ decision layer: Due now / Review in 2 weeks / No action / Doctor judgement
           └ token auth, hashed patient IDs, audit log, non-root container
                      │
                      ▼
          genai/ IBM Granite (llama.cpp, local) + RAG over care-planning guidelines
                      │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ், tested languages only) + "ask why"
                      ▼
-         app/ clinician dashboard (FastAPI + server-rendered HTML: login, roles, worklist, audit log)
+         app/ doctor dashboard (FastAPI + server-rendered HTML: login, roles, worklist, audit log)
 ```
 
 ## Run it
@@ -71,7 +71,7 @@ POST /score   (header: Authorization: Bearer <token>)
 **Security**
 - **Token required:** every scoring call needs the bearer token. A missing or wrong token gets `401`.
 - **Pseudonymised IDs:** patient IDs are SHA-256 hashed with a secret salt before logging. Raw IDs are never stored.
-- **Audit log:** every decision is logged with time, clinician and decision. No clinical values are logged.
+- **Audit log:** every decision is logged with time, doctor and decision. No clinical values are logged.
 - **No outside AI:** inference (risk models and Granite) stays on the LinuxONE server.
 - **Container:** the container runs as a non-root user (`api/Containerfile`).
 
@@ -90,11 +90,11 @@ All of these were captured on our LinuxONE Community Cloud server.
 
 ![Four demo patients](screenshots/02_four_patients.png)
 
-**3. AI + clinician:** the doctor's own estimate (60% risk) blended with TimeToTalk (85%) gives a combined risk of 73%.
+**3. AI + doctor:** the doctor's own estimate (60% risk) blended with TimeToTalk (85%) gives a combined risk of 73%.
 
 ![Doctor plus AI](screenshots/03_doctor_plus_ai.png)
 
-**4. Security:** a wrong token is rejected (`401`), and the audit log records only hashed patient IDs, the clinician and the decision. No clinical values are logged.
+**4. Security:** a wrong token is rejected (`401`), and the audit log records only hashed patient IDs, the doctor and the decision. No clinical values are logged.
 
 ![Security](screenshots/04_security_401_audit.png)
 
@@ -114,7 +114,7 @@ All of these were captured on our LinuxONE Community Cloud server.
 
 | Decision | Why |
 |---|---|
-| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.815 vs 0.803). Every factor is still explainable, so a clinician can check it. |
+| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.815 vs 0.803). Every factor is still explainable, so a doctor can check it. |
 | Cox model kept only for the **survival-curve shape** | The dashboard shows a curve over a year. The Cox curve is rescaled to pass through the logistic 6-month risk, so the two never disagree. |
 | Wrote our own numpy/scipy Cox model instead of `lifelines` | `lifelines` needs `autograd-gamma`, which failed to build in testing. Ours has no compiled dependencies, so it runs on s390x. |
 | All models saved as plain JSON | No pickle files in the API (a pickle can run code when loaded), and the container needs only numpy. |
@@ -125,8 +125,8 @@ All of these were captured on our LinuxONE Community Cloud server.
 | Missing labs → SUPPORT investigators' "normal" values, others → training median, plus a "was missing" flag | A missing lab usually means the doctor didn't think it was needed. This is documented and reproducible. |
 | 60/20/20 split stratified on 6-month status, seed 42; thresholds and recalibration use **validation only** | The test set is touched once, at the end. |
 | Recalibration (Platt scaling) only kept if it **clearly** helps on a held-out half of validation (error down ≥ 20% and ≥ 0.005) | An earlier isotonic version passed a weaker check on validation but made test calibration worse. |
-| **AI + clinician experiment**: combine model risk with the doctor's own estimate (`prg6m`), weights fit on validation | Tests whether the tool adds to clinical judgement rather than replacing it. The doctor estimate is never a model input otherwise. |
-| **"Clinician judgement"** output when the uncertainty is wide or the two models disagree | The model should say when it doesn't know. |
+| **AI + doctor experiment**: combine model risk with the doctor's own estimate (`prg6m`), weights fit on validation | Tests whether the tool adds to clinical judgement rather than replacing it. The doctor estimate is never a model input otherwise. |
+| **"Doctor judgement"** output when the uncertainty is wide or the two models disagree | The model should say when it doesn't know. |
 | **Rejected** a "risk is rising fast" alert | SUPPORT2 has one snapshot per patient, so we can't validate trends. It's listed under next steps. |
 | Granite runs locally, not a cloud LLM | Patient data never leaves LinuxONE. Granite only explains the model's decision and never changes the numbers. |
 
@@ -156,13 +156,13 @@ So **72%** of these patients either never had the decision recorded or had it on
 | Recommendation | Patients | Died within 6 months |
 |---|---|---|
 | Conversation due now | 571 | **80%** |
-| Clinician judgement (model unsure) | 141 (8%) | 50% |
+| Doctor judgement (model unsure) | 141 (8%) | 50% |
 | Review in 2 weeks | 371 | 47% |
 | No action | 738 | **20%** |
 
-"Due now", "review" and "clinician judgement" together reach **83%** of patients who died within 6 months.
+"Due now", "review" and "doctor judgement" together reach **83%** of patients who died within 6 months.
 
-### AI + clinician: better together
+### AI + doctor: better together
 Tested on the 1,497 test patients whose doctor gave a survival estimate:
 
 | | AUC | Deaths caught when each flags the same 763 patients |
@@ -195,7 +195,7 @@ Ranking accuracy is similar across groups, and predicted risk matches observed r
 - Fine-tune Granite on local care-planning guidance in the four official languages
 
 ## Ethics
-Clinician-facing only. The model prompts and never decides. It is never shown to patients. Thresholds can be adjusted by each hospital.
+Doctor-facing only. The model prompts and never decides. It is never shown to patients. Thresholds can be adjusted by each hospital.
 
 ## Open-source libraries & data
 - SUPPORT2 dataset — https://archive.ics.uci.edu/dataset/880

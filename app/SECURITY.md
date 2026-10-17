@@ -45,7 +45,7 @@ Code: [security.py](security.py) (passwords, lockout, sessions, audit, pseudonym
 ### 3. Authorisation
 | Role | Can | Can't |
 |---|---|---|
-| `clinician` | Worklist, patient pages, briefings | Audit log |
+| `doctor` | Worklist, patient pages, briefings | Audit log |
 | `auditor` | Audit log | Any patient page |
 
 Every denial returns `403` and is written to the audit log.
@@ -57,7 +57,7 @@ Every denial returns `403` and is written to the audit log.
 | Data minimisation | Only the model's input columns are sent for scoring. Outcomes, race, income, education and the doctor's estimate are never sent to the scorer or API. |
 | No caching | `Cache-Control: no-store` on every page. |
 | On-premises | Scoring and Granite run on the LinuxONE server; no patient data goes to an external service. |
-| Clinician-only | Footer and design: decision support for clinicians, never shown to patients. |
+| Doctor-only | Footer and design: decision support for doctors, never shown to patients. |
 
 ### 5. Browser protections
 | Header / control | Value |
@@ -114,7 +114,7 @@ Tested on 17 Oct 2026 against the running dashboard (local mode and API mode), u
 | 3 | Wrong password | Generic error, `401` | ✅ |
 | 4 | Login POST with a forged CSRF token | Rejected, back to `/login` | ✅ |
 | 5 | Briefing POST with a forged CSRF token | `403`, logged as `csrf_rejected` | ✅ |
-| 6 | Clinician opens `/audit` | `403`, logged as `access_denied` | ✅ |
+| 6 | Doctor opens `/audit` | `403`, logged as `access_denied` | ✅ |
 | 7 | Auditor opens a patient page | `403` | ✅ |
 | 8 | Invalid / path-traversal patient ref | `404` | ✅ |
 | 9 | `<script>` injected in a filter | Ignored, never rendered | ✅ |
@@ -132,7 +132,7 @@ These checks are now automated, with 100+ more, in [tests/](../tests/README.md),
 curl -s -D - -o /dev/null https://localhost:8501/login -k        # security headers
 curl -s -o /dev/null -w "%{http_code}\n" https://localhost:8501/docs -k   # 404
 ```
-In the browser: try 6 wrong passwords (lockout message), sign in as a clinician and open `/audit`
+In the browser: try 6 wrong passwords (lockout message), sign in as a doctor and open `/audit`
 (403 page), then sign in as an auditor to show the audit log with pseudonyms only.
 
 ## Known limitations (production next steps)

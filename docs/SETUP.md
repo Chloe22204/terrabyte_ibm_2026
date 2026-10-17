@@ -65,7 +65,7 @@ pip install xgboost || echo "xgboost failed: fine, the second opinion is skipped
 ```bash
 python3 ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
 ```
-This rebuilds `artifacts/`, **including `artifacts/bootstraps/`**, which isn't in git. Without it the uncertainty range collapses to a single number and the "Clinician judgement" tier never triggers.
+This rebuilds `artifacts/`, **including `artifacts/bootstraps/`**, which isn't in git. Without it the uncertainty range collapses to a single number and the "Doctor judgement" tier never triggers.
 
 ✅ `ls artifacts/bootstraps | wc -l` shows 20, and `artifacts/metrics.json` exists.
 
@@ -175,7 +175,7 @@ podman exec ttt whoami                              # appuser (not root)
 | `GET /health` | status, platform, Granite up/down |
 | `POST /score` | risk, uncertainty, decision, top factors |
 | `POST /prep_sheet` | score + Granite prep sheet (`language`: English / Chinese / Malay / Tamil) |
-| `POST /ask_why` | short answer to a clinician's question (`question`, up to 500 characters) |
+| `POST /ask_why` | short answer to a doctor's question (`question`, up to 500 characters) |
 | `POST /benchmark?n=1000` | scoring speed |
 
 ## 6. Dashboard
@@ -187,7 +187,7 @@ pip3 install -r app/requirements.txt
 export TTT_ID_SALT=$(python3 -c "import secrets; print(secrets.token_hex(16))")
 export TTT_COOKIE_SECURE=0                                   # plain http, reached only through the tunnel
 export TTT_USE_API=1 TTT_API_URL=http://127.0.0.1:8000       # TTT_API_TOKEN from step 5 must still be set
-python3 app/manage_users.py add dr_tan --role clinician      # asks for a password (12+ characters)
+python3 app/manage_users.py add dr_tan --role doctor      # asks for a password (12+ characters)
 nohup python3 -m uvicorn app.dashboard:app --host 127.0.0.1 --port 8501 > dashboard.log 2>&1 &
 ```
 Leave out the `TTT_USE_API` line to score inside the dashboard process instead (it reads `artifacts_logistic/`).

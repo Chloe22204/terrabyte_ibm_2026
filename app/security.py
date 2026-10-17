@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 # scrypt cost: 2^14 iterations, 16 MB memory per hash (OWASP-recommended minimum)
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
-ROLES = ("clinician", "auditor")
+ROLES = ("doctor", "auditor")
 
 
 def hash_password(password: str) -> str:

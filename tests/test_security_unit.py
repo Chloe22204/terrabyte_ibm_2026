@@ -41,9 +41,9 @@ def test_same_is_constant_time_and_rejects_empty():
 # ---------------------------------------------------------------- users
 def test_userstore_authenticate(tmp_path):
     store = UserStore(tmp_path / "u.json")
-    store.save({"a": {"hash": hash_password("pw-aaaaaaaaaaaa"), "role": "clinician"},
-                "d": {"hash": hash_password("pw-dddddddddddd"), "role": "clinician", "disabled": True}})
-    assert store.authenticate("a", "pw-aaaaaaaaaaaa") == "clinician"
+    store.save({"a": {"hash": hash_password("pw-aaaaaaaaaaaa"), "role": "doctor"},
+                "d": {"hash": hash_password("pw-dddddddddddd"), "role": "doctor", "disabled": True}})
+    assert store.authenticate("a", "pw-aaaaaaaaaaaa") == "doctor"
     assert store.authenticate("a", "wrong") is None
     assert store.authenticate("nobody", "pw-aaaaaaaaaaaa") is None
     assert store.authenticate("d", "pw-dddddddddddd") is None     # disabled account
@@ -103,7 +103,7 @@ def test_guard_window_expires(monkeypatch):
 # ---------------------------------------------------------------- sessions
 def test_session_tokens_are_long_and_unique():
     s = SessionStore()
-    tokens = {s.create("u", "clinician") for _ in range(2000)}
+    tokens = {s.create("u", "doctor") for _ in range(2000)}
     assert len(tokens) == 2000
     assert all(len(t) >= 43 for t in tokens)           # 32 random bytes, base64url
 
@@ -120,14 +120,14 @@ def test_session_idle_and_absolute_timeouts(monkeypatch):
     now = [0.0]
     monkeypatch.setattr(security.time, "time", lambda: now[0])
     s = SessionStore(idle_s=60, absolute_s=300)
-    t = s.create("u", "clinician")
+    t = s.create("u", "doctor")
     now[0] = 59
     assert s.get(t)                                     # activity resets the idle clock
     now[0] = 118
     assert s.get(t)
     now[0] = 179                                        # 61 s idle
     assert s.get(t) is None
-    t2 = s.create("u", "clinician")
+    t2 = s.create("u", "doctor")
     for step in range(1, 8):                            # active every 50 s, but past 300 s total
         now[0] = 179 + 50 * step
         alive = s.get(t2)
@@ -136,7 +136,7 @@ def test_session_idle_and_absolute_timeouts(monkeypatch):
 
 def test_session_end_and_unknown_tokens():
     s = SessionStore()
-    t = s.create("u", "clinician")
+    t = s.create("u", "doctor")
     s.end(t)
     assert s.get(t) is None
     assert s.get(None) is None and s.get("") is None and s.get("forged") is None

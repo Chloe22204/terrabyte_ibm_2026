@@ -26,9 +26,9 @@ Windows laptop, 17 Oct 2026 (LinuxONE numbers to be added):
 
 | Test | Load | Result |
 |---|---|---|
-| Concurrent clinicians | 30 users at once, 600 requests | 0 errors, median 336 ms, p95 434 ms, 54 req/s |
+| Concurrent doctors | 30 users at once, 600 requests | 0 errors, median 336 ms, p95 434 ms, 54 req/s |
 | Scoring burst | 200 patient pages from 50 threads | All live-scored, p95 547 ms |
-| Role isolation under load | 20 mixed clinician/auditor users | No role ever saw the other's pages |
+| Role isolation under load | 20 mixed doctor/auditor users | No role ever saw the other's pages |
 | Password spraying | 200 usernames from one IP | Locked after exactly 20; correct password then refused |
 | Simultaneous logins | 50 at the same moment | 50 unique working sessions |
 | Model throughput | All 1,821 test patients | 212 patients/s (4.7 ms each, incl. 20 bootstrap models + XGBoost) |

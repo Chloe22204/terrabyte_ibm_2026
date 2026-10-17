@@ -22,12 +22,12 @@
   "No action": 739,
   "Conversation due now": 572,
   "Review in 2 weeks": 369,
-  "Clinician judgement": 141
+  "Doctor judgement": 141
  },
  "died_6m_rate_[Conversation due now]": 0.8024475524475524,
  "died_6m_rate_[Review in 2 weeks]": 0.4742547425474255,
  "died_6m_rate_[No action]": 0.20027063599458728,
- "died_6m_rate_[Clinician judgement]": 0.5035460992907801,
+ "died_6m_rate_[Doctor judgement]": 0.5035460992907801,
  "auprc_6m_test": 0.7975163766702951,
  "brier_6m_test": 0.17585675110546278,
  "flag_sensitivity_test": 0.7432590855803048,
@@ -35,7 +35,7 @@
  "flag_ppv_test": 0.6737513283740701,
  "flag_rate_test": 0.5167490389895661,
  "flag_or_judgement_sensitivity_test": 0.8264947245017585,
- "clinician_judgement_share_test": 0.07742998352553541,
+ "doctor_judgement_share_test": 0.07742998352553541,
  "physician_n": 1497,
  "physician_auc_6m": 0.7864998120872632,
  "model_auc_6m_same_patients": 0.8035417076793672,

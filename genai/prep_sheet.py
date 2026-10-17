@@ -1,5 +1,5 @@
 """
-Turns a TimeToTalk score into a one-page conversation prep sheet for the clinician:
+Turns a TimeToTalk score into a one-page conversation prep sheet for the doctor:
   score (ml/scoring.py) -> retrieve guideline passages (retriever.py) -> prompt (prompt.py) -> Granite (granite.py)
 
 If Granite is unreachable, a template sheet with the same headings is returned instead, so the demo never breaks.
@@ -78,7 +78,7 @@ def gather_passages(score, max_chunks=5):
     """Top 2 for 'why now' (based on the patient's factors), then the best chunk per remaining heading."""
     factors = " ".join(friendly(f) for f in score["top_factors"][:3])   # uses the readable label
     why_query = f"{score['decision']} when to start conversation {factors}"
-    if score["decision"] == "Clinician judgement" or score.get("models_disagree"):
+    if score["decision"] == "Doctor judgement" or score.get("models_disagree"):
         why_query += " uncertainty prognosis range"
     picked, seen = [], set()
     for query, k, files in [(why_query, 1, WHY_NOTES)] + HEADING_QUERIES:
@@ -102,7 +102,7 @@ PROGNOSIS = re.compile(r"\b(will die|going to die|(days?|weeks?|months?|years?) 
 
 
 def check_output(text, score):
-    """Cheap guardrails on Granite's output. Returns warnings for the clinician, never edits the text."""
+    """Cheap guardrails on Granite's output. Returns warnings for the doctor, never edits the text."""
     warnings = []
     if PROGNOSIS.search(text):
         warnings.append("Output contains a time-to-death statement; the model should not give one. Review before use.")
@@ -126,7 +126,7 @@ def fallback_sheet(score, passages, patient=None):
     lo, hi = score["risk_6m_interval_80"]
     factors = ", ".join(factor_text(f, patient) for f in score["top_factors"][:3])
     lines = []
-    if score["decision"] == "Clinician judgement":
+    if score["decision"] == "Doctor judgement":
         lines.append("NOTE: the model is uncertain for this patient. Your own clinical assessment should lead.\n")
     lines += [
         f"1. Why now\nRecommendation: {score['decision']}. Estimated 6-month mortality risk "

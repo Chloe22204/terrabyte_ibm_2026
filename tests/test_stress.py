@@ -65,13 +65,13 @@ def report(name, latencies):
     return p95
 
 
-def test_concurrent_clinicians_browsing(server):
-    """30 clinicians signed in at once, each opening 10 worklist pages and 10 patients (600 requests)."""
+def test_concurrent_doctors_browsing(server):
+    """30 doctors signed in at once, each opening 10 worklist pages and 10 patients (600 requests)."""
     refs = [p["ref"] for p in dashboard.ORDER[:300]]
     errors, latencies = [], []
     lock = threading.Lock()
 
-    def clinician(n):
+    def doctor(n):
         b = Browser(server)
         status, _ = b.login("clin", PASSWORDS["clin"])
         if status != 200:
@@ -87,7 +87,7 @@ def test_concurrent_clinicians_browsing(server):
 
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=30) as pool:
-        list(pool.map(clinician, range(30)))
+        list(pool.map(doctor, range(30)))
     wall = time.perf_counter() - t0
     p95 = report("concurrent browsing", latencies)
     print(f"  throughput: {len(latencies) / wall:.0f} requests/s over {wall:.1f} s")
@@ -114,7 +114,7 @@ def test_burst_of_patient_scoring(server):
 
 
 def test_sessions_stay_isolated_under_load(server):
-    """Clinicians and auditors interleaved: nobody ever sees the other role's pages."""
+    """Doctors and auditors interleaved: nobody ever sees the other role's pages."""
     leaks = []
 
     def worker(n):

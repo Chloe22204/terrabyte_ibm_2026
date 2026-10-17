@@ -28,9 +28,9 @@ from security import UserStore, hash_password  # noqa: E402
 # test-only accounts with random passwords generated per run
 PASSWORDS = {"clin": secrets.token_urlsafe(18), "audit": secrets.token_urlsafe(18), "gone": secrets.token_urlsafe(18)}
 UserStore(os.environ["TTT_USERS_FILE"]).save({
-    "clin": {"hash": hash_password(PASSWORDS["clin"]), "role": "clinician"},
+    "clin": {"hash": hash_password(PASSWORDS["clin"]), "role": "doctor"},
     "audit": {"hash": hash_password(PASSWORDS["audit"]), "role": "auditor"},
-    "gone": {"hash": hash_password(PASSWORDS["gone"]), "role": "clinician", "disabled": True},
+    "gone": {"hash": hash_password(PASSWORDS["gone"]), "role": "doctor", "disabled": True},
 })
 
 from app import dashboard  # noqa: E402
@@ -67,7 +67,7 @@ def csrf_of(page_text):
 
 
 @pytest.fixture
-def clinician(client):
+def doctor(client):
     assert login(client, "clin").status_code == 303
     return client
 

@@ -251,7 +251,7 @@ def main(args):
             elif hi[i] < t_mid and not disagree:
                 out.append("No action")
             elif (hi[i] - lo[i]) > w_max or disagree:
-                out.append("Clinician judgement")
+                out.append("Doctor judgement")
             elif r[i] >= t_mid:
                 out.append("Review in 2 weeks")
             else:
@@ -260,7 +260,7 @@ def main(args):
 
     dec_te = decide(r_te, lo_te, hi_te, second_te)
     metrics["decision_counts_test"] = pd.Series(dec_te).value_counts().to_dict()
-    for d in ["Conversation due now", "Review in 2 weeks", "No action", "Clinician judgement"]:
+    for d in ["Conversation due now", "Review in 2 weeks", "No action", "Doctor judgement"]:
         m = (dec_te == d) & k_te
         metrics[f"died_6m_rate_[{d}]"] = float(y_te[m].mean()) if m.any() else None
 
@@ -275,10 +275,10 @@ def main(args):
     metrics["flag_specificity_test"] = tn / max(tn + fp, 1)
     metrics["flag_ppv_test"] = tp / max(tp + fp, 1)
     metrics["flag_rate_test"] = float(fk.mean())
-    # same, but counting "Clinician judgement" as flagged (those patients do get a human look)
-    fj = np.isin(dec_te, ["Conversation due now", "Review in 2 weeks", "Clinician judgement"])[k_te]
+    # same, but counting "Doctor judgement" as flagged (those patients do get a human look)
+    fj = np.isin(dec_te, ["Conversation due now", "Review in 2 weeks", "Doctor judgement"])[k_te]
     metrics["flag_or_judgement_sensitivity_test"] = int(np.sum(fj & (yk == 1))) / max(tp + fn, 1)
-    metrics["clinician_judgement_share_test"] = float(np.mean(dec_te == "Clinician judgement"))
+    metrics["doctor_judgement_share_test"] = float(np.mean(dec_te == "Doctor judgement"))
 
     # ---------------------------------------------------------------- physicians vs model (test set)
     if "prg6m" in df.columns:
@@ -313,7 +313,7 @@ def main(args):
         # like-for-like: the model's own k highest-risk patients (ranking vs ranking, ignoring decision levels)
         metrics["same_budget_model_rank_caught"] = int(np.sum(top_k(r_te[mk]) & need))
 
-        # AI + clinician: combine model risk and the doctor's estimate. The 2 weights are fit on
+        # AI + doctor: combine model risk and the doctor's estimate. The 2 weights are fit on
         # VALIDATION patients who have a doctor estimate, then scored once on test.
         def lg(p):
             p = np.clip(p, 0.01, 0.99)

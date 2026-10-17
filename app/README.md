@@ -1,17 +1,17 @@
-# TimeToTalk clinician dashboard
+# TimeToTalk doctor dashboard
 
 FastAPI + server-rendered HTML (no JavaScript). Runs on LinuxONE (s390x): every dependency is
 pure Python or has an s390x wheel. Streamlit was rejected because its `pyarrow` dependency has
 no s390x build.
 
 ## Pages
-- **Worklist**: test-set patients sorted by priority (Due now → Clinician judgement → Review → No action),
+- **Worklist**: test-set patients sorted by priority (Due now → Doctor judgement → Review → No action),
   filters by decision / diagnosis / optimism gap, counts per decision. A **System** panel shows where
   inference runs (machine, bootstrap models, second opinion, Granite) and a **Benchmark** button
   scores one patient 500 times and reports patients per second.
 - **Patient**: 6-month risk with its 80% range and the decision thresholds, second opinion, survival
   curve, main factors (with the patient's values), doctor's estimate vs model, and the Granite briefing.
-  The clinician can enter their own 6-month survival estimate to see doctor, model and combined risk side by side
+  The doctor can enter their own 6-month survival estimate to see doctor, model and combined risk side by side
   (combined = the API's 50/50 blend); the estimate itself is never written to the audit log.
 - **Audit log** (auditor role only).
 
@@ -22,7 +22,7 @@ python -m venv .venv
 pip install -r app/requirements.txt
 $env:TTT_ID_SALT = python -c "import secrets; print(secrets.token_hex(16))"
 $env:TTT_COOKIE_SECURE = "0"            # plain http on localhost only
-python app/manage_users.py add <your_username> --role clinician
+python app/manage_users.py add <your_username> --role doctor
 uvicorn app.dashboard:app --host 127.0.0.1 --port 8501
 ```
 Then open http://localhost:8501. Needs `data/support2.csv` for live scoring; without it the
@@ -55,7 +55,7 @@ Full details, test results and known limitations: **[SECURITY.md](SECURITY.md)**
 In short:
 - **Login:** scrypt-hashed passwords, lockout after 5 failed attempts, generic errors.
 - **Sessions:** server-side random tokens in an `HttpOnly`/`Secure`/`SameSite=Strict` cookie, with 15-minute idle timeout.
-- **Roles:** clinicians see patients; auditors see only the audit log.
+- **Roles:** doctors see patients; auditors see only the audit log.
 - **Privacy:** patient IDs replaced by keyed pseudonyms everywhere, and only model inputs are sent for scoring.
 - **Browser:** no JavaScript, strict Content-Security-Policy, CSRF tokens, anti-framing, no caching.
 - **Audit:** every login and patient view is logged, with no clinical values.

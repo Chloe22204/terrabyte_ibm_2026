@@ -30,7 +30,7 @@ ids = a.ids
 if not ids:   # one demo patient per decision, from the held-out test set
     s = pd.read_csv(a.scored)
     # pick a typical-looking patient per decision (not an extreme 100% case) for the demo
-    target = {"Conversation due now": 0.85, "Review in 2 weeks": 0.50, "No action": 0.20, "Clinician judgement": 0.55}
+    target = {"Conversation due now": 0.85, "Review in 2 weeks": 0.50, "No action": 0.20, "Doctor judgement": 0.55}
     ids = []
     for dec, t in target.items():
         g = s[s.decision == dec]
@@ -40,7 +40,7 @@ if not ids:   # one demo patient per decision, from the held-out test set
 for pid in ids:
     row = d[d["id"] == pid].iloc[0].drop(labels=[c for c in LEAKY if c in d.columns])
     patient = {k: (None if pd.isna(v) else (v.item() if hasattr(v, "item") else v)) for k, v in row.items() if k != "id"}
-    body = json.dumps({"patient_id": f"SUPPORT2-{pid}", "clinician_id": "demo-doctor",
+    body = json.dumps({"patient_id": f"SUPPORT2-{pid}", "doctor_id": "demo-doctor",
                        "patient": patient, "doctor_survival_6m": a.doctor}).encode()
     req = urllib.request.Request(f"{a.url}/score", data=body, method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {a.token}"})
