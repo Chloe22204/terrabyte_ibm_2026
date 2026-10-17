@@ -69,7 +69,7 @@ This rebuilds `artifacts/`, **including `artifacts/bootstraps/`**, which isn't i
 
 ✅ `ls artifacts/bootstraps | wc -l` shows 20, and `artifacts/metrics.json` exists.
 
-Optional, for the AI accelerator: `python3 ml/accelerator_model.py --data data/support2.csv --out artifacts`
+Optional, for the AI accelerator: `python3 ml/accelerator_tf.py` (runs the main model on the z17 NNPA via TensorFlow + `ibm-zdnn-plugin`; about 20 s, run after training)
 
 ## 3. Get Granite running
 Granite is IBM's open LLM. We run it with **llama.cpp**, and it never leaves the VM.

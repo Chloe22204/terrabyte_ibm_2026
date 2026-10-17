@@ -10,7 +10,7 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
                                      │
                      ┌───────────────┴──────────────┐
                      ▼                              ▼
-         api/ (FastAPI in Podman on LinuxONE)   ml/accelerator_model.py (MLP → ONNX → z17 AI accelerator)
+         api/ (FastAPI in Podman on LinuxONE)   ml/accelerator_tf.py (main model on the z17 AI accelerator: TensorFlow + IBM zDNN)
           ├ logistic 6-month risk model + 20 bootstrap models (uncertainty)
           ├ Cox model for the survival-curve shape
           ├ XGBoost second opinion
@@ -37,7 +37,7 @@ podman run -d --name ttt --network host -e TTT_API_TOKEN=$(openssl rand -hex 24)
 # 4b. or without a container, e.g. inside the Jupyter terminal (no openssl there, so make the token with Python):
 #     export TTT_API_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(16))")
 #     TTT_ARTIFACTS=artifacts nohup python3 -m uvicorn app:app --app-dir api --port 8000 &
-python3 ml/accelerator_model.py --data data/support2.csv --out artifacts          # optional: accelerator second-opinion model
+python3 ml/accelerator_tf.py                                                      # optional: main model on the z17 AI accelerator (NNPA)
 curl localhost:8000/health
 ```
 
@@ -119,7 +119,8 @@ All of these were captured on our LinuxONE Community Cloud server.
 | Cox model kept only for the **survival-curve shape** | The dashboard shows a curve over a year. The Cox curve is rescaled to pass through the logistic 6-month risk, so the two never disagree. |
 | Wrote our own numpy/scipy Cox model instead of `lifelines` | `lifelines` needs `autograd-gamma`, which failed to build in testing. Ours has no compiled dependencies, so it runs on s390x. |
 | All models saved as plain JSON | No pickle files in the API (a pickle can run code when loaded), and the container needs only numpy. |
-| **Rejected** deep learning as the main model | Little gain on about 9,000 patients and much harder to explain. Kept a small neural net only as a second opinion on the AI accelerator. |
+| **Rejected** deep learning as the main model | Little gain on about 9,000 patients and much harder to explain. A 2-layer net we tried scored lower (AUC 0.72 vs 0.81). |
+| Main model also runs on the z17 **AI accelerator** (`ml/accelerator_tf.py`) | A logistic regression is a one-layer neural network, so we load its weights into TensorFlow, and IBM's `ibm-zdnn-plugin` runs it on the NNPA with the same accuracy (AUC 0.813, 0.2 ms per patient). **Honest result:** for a model this small, handing work to the accelerator costs more than it saves, so plain CPU is faster. A larger 2-layer network ran **4.9x faster** on the NNPA than on the CPU. The API keeps the CPU path; the accelerator path is ready for deeper models. |
 | **Leaky columns excluded** (death, d.time, hospdead, prg2m/6m, dnr/dnrday, surv2m/6m, slos, costs, avtisst, sfdm2) | The test for each column: would a doctor know it on day 3? If not, it's out. |
 | **Race, income and education are not model inputs** | Fairness. They are used only to audit performance across groups (`fairness.csv`). |
 | Missing labs → SUPPORT investigators' "normal" values, others → training median, plus a "was missing" flag | A missing lab usually means the doctor didn't think it was needed. This is documented and reproducible. |
@@ -201,7 +202,7 @@ Clinician-facing only. The model prompts and never decides. It is never shown to
 - SUPPORT2 dataset — https://archive.ics.uci.edu/dataset/880
 - NumPy — https://numpy.org · SciPy — https://scipy.org · pandas — https://pandas.pydata.org
 - scikit-learn — https://scikit-learn.org · XGBoost — https://xgboost.ai · matplotlib — https://matplotlib.org
-- PyTorch — https://pytorch.org · ONNX / ONNX Runtime — https://onnx.ai, https://onnxruntime.ai
+- TensorFlow — https://www.tensorflow.org · IBM zDNN plugin for TensorFlow (`ibm-zdnn-plugin`, preinstalled in the LinuxONE Jupyter Lab ML image) — https://github.com/IBM/zDNN
 - FastAPI — https://fastapi.tiangolo.com · Uvicorn — https://www.uvicorn.org · Streamlit — https://streamlit.io
 - llama.cpp — https://github.com/ggml-org/llama.cpp · IBM Granite — https://www.ibm.com/granite
 - IBM LinuxONE Community Cloud Jupyter Lab ML image — https://github.com/linuxone-community-cloud/jupyter-lab-ml
