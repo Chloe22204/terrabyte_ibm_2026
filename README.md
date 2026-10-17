@@ -49,6 +49,40 @@ podman run -d --name ttt -p 8000:8000 -e TTT_API_TOKEN=$(openssl rand -hex 24) -
 curl localhost:8000/health
 ```
 
+## Proof it runs on IBM Z (LinuxONE z17)
+
+All screenshots are from our LinuxONE VM (`toeboon`).
+
+**01 — s390x on z17.** `uname -m` and `lscpu` show s390x, machine type 9175 (IBM z17); the API's `/health` on that machine reports 20 bootstrap models and the XGBoost second opinion loaded.
+![s390x, machine type 9175](screenshots/01_ibmz_s390x_z17.png)
+
+**02 — Four patients, one per decision tier.** Test patients scored through the API: Conversation due now, Review in 2 weeks, No action and Doctor judgement, each with its 80% range, second opinion and top factors, in 0.7–2.2 ms.
+![Four patients scored](screenshots/02_four_patients.png)
+
+**03 — Doctor + AI.** The same patient with the doctor's estimate added: model 85%, doctor 60%, combined 73%.
+![Doctor plus AI](screenshots/03_doctor_plus_ai.png)
+
+**04 — Security.** A request with a wrong token gets HTTP 401; the audit log records each score with a hashed patient ID, decision and latency, and no clinical values.
+![401 and audit log](screenshots/04_security_401_audit.png)
+
+**05 — Speed.** The API benchmark scores 1,000 patients in 0.67 s: about 1,490 patients per second, 0.67 ms each.
+![Speed benchmark](screenshots/05_speed_benchmark.png)
+
+**06 — AI accelerator.** `lscpu` lists the `nnpa` flag (the z17's on-chip AI accelerator) on s390x, machine type 9175.
+![NNPA flag](screenshots/06_ai_accelerator_nnpa.png)
+
+**07 — Training on z17.** The full training run (thresholds, fairness audit) takes 2.2 s; `ml/combo.py` on the 1,497 patients with a doctor estimate gives doctor AUC 0.786, model 0.795, combined 0.831.
+![Training and doctor plus AI on z17](screenshots/07_training_and_doctor_plus_ai_on_z17.png)
+
+**08 — Stress test.** 600 concurrent dashboard requests (median 76 ms, p95 126 ms); password spraying locked out after 20 attempts; all 1,821 test patients scored in 1.3 s (1,381 patients/s, including 20 bootstrap models + XGBoost). 6 tests passed.
+![Stress test](screenshots/08_stress_test_z17.png)
+
+**API health on s390x.** The API's `/health` reports machine s390x, 20 bootstrap models, second opinion loaded and Granite connected (`"ok": true`).
+![API health with Granite connected](screenshots/container_screenshot.png)
+
+**Granite prep sheet on LinuxONE.** Granite generates prep sheets on the VM (`Granite used: True`, 91–99 s each) in Malay and Tamil. The Tamil output is garbled, which is why Tamil was removed.
+![Granite prep sheet](screenshots/genai_prepsheet.jpg)
+
 ## Decisions log (what we chose, what we rejected, and why)
 
 | Decision | Why |
