@@ -175,7 +175,7 @@ podman exec ttt whoami                              # appuser (not root)
 | `GET /health` | status, platform, Granite up/down |
 | `POST /score` | risk, uncertainty, decision, top factors |
 | `POST /prep_sheet` | score + Granite prep sheet (`language`: English / Chinese / Malay / Tamil) |
-| `POST /ask_why` | short answer to a doctor's question (`question`, up to 500 characters) |
+| `POST /ask_why` | "Ask the guidelines" coach: answers a doctor's communication question from the guideline notes (`question`, up to 500 characters) |
 | `POST /benchmark?n=1000` | scoring speed |
 
 ## 6. Dashboard

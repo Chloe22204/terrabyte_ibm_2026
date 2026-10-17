@@ -19,7 +19,7 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
                      │
                      ▼
          genai/ IBM Granite (llama.cpp, local) + RAG over care-planning guidelines
-                     │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ்) + "ask why"
+                     │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ்) + "ask the guidelines" coach
                      ▼
          app/ Streamlit clinician dashboard
 ```

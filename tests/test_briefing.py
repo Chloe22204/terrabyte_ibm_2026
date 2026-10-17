@@ -1,4 +1,4 @@
-"""The prep sheet and "Ask why" boxes, wired to genai/prep_sheet.py (Granite is mocked here)."""
+"""The prep sheet and "Ask the guidelines" boxes, wired to genai/prep_sheet.py (Granite is mocked here)."""
 import json
 
 import pytest
@@ -90,16 +90,33 @@ def test_sheet_text_is_never_audited(doctor, some_ref, granite_up):
     assert "Invite the family" not in json.dumps(dashboard.audit.tail(50))
 
 
-# ---------------------------------------------------------------- ask why
-def test_ask_why_answer_is_shown(doctor, some_ref, monkeypatch):
-    monkeypatch.setattr(dashboard.prep_sheet, "chat", lambda *a, **k: "Mostly the physiology score.")
-    r = post_why(doctor, some_ref, "Why is the risk high?")
-    assert r.status_code == 200 and "Answered by Granite" in r.text and "Mostly the physiology score." in r.text
+# ---------------------------------------------------------------- ask the guidelines (conversation coach)
+COACH_Q = "The family wants everything done. How do I respond?"
 
 
-def test_ask_why_without_granite_lists_factors(doctor, some_ref, granite_down):
-    r = post_why(doctor, some_ref, "Why?")
-    assert "Granite unavailable" in r.text and "main factors" in r.text
+def test_coach_answer_is_shown_with_guidance(doctor, some_ref, monkeypatch):
+    monkeypatch.setattr(dashboard.prep_sheet, "chat", lambda *a, **k: "Ask about their goals first.")
+    r = post_why(doctor, some_ref, COACH_Q)
+    assert r.status_code == 200 and "Answered by Granite" in r.text and "Ask about their goals first." in r.text
+    assert "Guidance used" in r.text and "language_to_avoid.md" in r.text
+
+
+def test_coach_prompt_carries_retrieved_passages(doctor, some_ref, granite_up):
+    post_why(doctor, some_ref, COACH_Q)
+    prompt = granite_up[0][1]["content"]
+    assert COACH_Q in prompt and "[language_to_avoid.md]" in prompt
+    assert "GUIDELINE PASSAGES" in prompt
+
+
+def test_coach_off_topic_question_skips_granite(doctor, some_ref, granite_up):
+    r = post_why(doctor, some_ref, "What is the capital of France?")
+    assert "Not covered by the notes" in r.text and "cover this question" in r.text
+    assert granite_up == []                                   # no Granite call for an unanswerable question
+
+
+def test_coach_without_granite_shows_guidance(doctor, some_ref, granite_down):
+    r = post_why(doctor, some_ref, COACH_Q)
+    assert "Granite unavailable: guidance shown" in r.text and "Do you want us to do everything?" in r.text
 
 
 def test_ask_why_input_limits(doctor, some_ref, granite_up):

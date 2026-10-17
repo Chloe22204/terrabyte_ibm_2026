@@ -7,14 +7,14 @@ If Granite is unreachable, a template sheet with the same headings is returned i
 CLI (run from the repo root after train.py has produced artifacts/):
   python genai/prep_sheet.py --patient genai/example_patient.json
   python genai/prep_sheet.py --patient genai/example_patient.json --language Chinese
-  python genai/prep_sheet.py --patient genai/example_patient.json --why "Why is albumin important here?"
+  python genai/prep_sheet.py --patient genai/example_patient.json --why "The family wants everything done. How do I respond?"
   python genai/prep_sheet.py --patient genai/example_patient.json --no-llm      # template only
 """
 import argparse, json, os, re, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from prompt import build_prompt, build_why_prompt, factor_text, friendly  # noqa: E402
+from prompt import build_coach_prompt, build_prompt, factor_text, friendly  # noqa: E402
 from retriever import retrieve  # noqa: E402
 from granite import chat, GraniteUnavailable  # noqa: E402
 
@@ -33,6 +33,8 @@ HEADING_QUERIES = [  # (query, how many passages, notes to search)
     ("document record care plan advance care planning next step review", 1, ["documenting.md"]),
 ]
 WHY_NOTES = ["when_to_start.md", "uncertainty.md"]
+COACH_PASSAGES = 3       # 'Ask the guidelines': passages searched across all notes
+COACH_MIN_SCORE = 0.05   # below this TF-IDF similarity a passage shares no real words with the question
 
 
 def _norm(patient):
@@ -167,16 +169,27 @@ def make_prep_sheet(score, patient, language="English", use_llm=True):
 
 
 def ask_why(score, question, patient=None, use_llm=True):
+    """'Ask the guidelines' conversation coach: answers a doctor's communication question from the
+    guideline notes (retrieval over all notes + Granite). Off-topic questions get no Granite call."""
     question = question.strip()[:500]
+    passages = [c for c in retrieve(question, k=COACH_PASSAGES) if c["score"] >= COACH_MIN_SCORE]
+    out = {"used_llm": False, "warnings": [], "sources": sorted({c["source"] for c in passages}),
+           "passages": [{"file": c["file"], "title": c["title"]} for c in passages]}
+    if not passages:
+        return dict(out, answer="The guideline notes don't cover this question. They cover when to start, setting "
+                                "up, questions to explore, phrases to avoid, uncertainty and documenting. For why "
+                                "this patient's risk is what it is, see Main factors above.")
     if use_llm:
+        messages = build_coach_prompt(score, question,
+                                      [f"{shorten(c['text'], 3)} [{c['file']}]" for c in passages],
+                                      summarize(patient or {}))
         try:
-            text = chat(build_why_prompt(score, question, patient), max_tokens=200)
-            return {"answer": text, "used_llm": True, "warnings": check_output(text, score)}
+            text = chat(messages, max_tokens=200)
+            return dict(out, answer=text, used_llm=True, warnings=check_output(text, score))
         except GraniteUnavailable:
             pass
-    factors = "; ".join(factor_text(f, patient) for f in score["top_factors"][:5])
-    return {"answer": f"Granite is not available. The model's main factors for this patient were: {factors}.",
-            "used_llm": False, "warnings": []}
+    return dict(out, answer="Granite is not available, so here is the most relevant guidance:\n\n"
+                + "\n\n".join(f"{c['title']} [{c['file']}]\n{c['text']}" for c in passages))
 
 
 if __name__ == "__main__":
@@ -184,7 +197,7 @@ if __name__ == "__main__":
     ap.add_argument("--patient", default=os.path.join(HERE, "example_patient.json"))
     ap.add_argument("--artifacts", default="artifacts")
     ap.add_argument("--language", default="English", choices=list(LANGUAGES))
-    ap.add_argument("--why", help="ask a 'why' question instead of making a prep sheet")
+    ap.add_argument("--why", help="ask the guidelines coach a question instead of making a prep sheet")
     ap.add_argument("--no-llm", action="store_true", help="skip Granite, use the template")
     a = ap.parse_args()
 

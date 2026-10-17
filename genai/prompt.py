@@ -100,10 +100,23 @@ def build_prompt(score, summary, passages, language="English", patient=None):
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": body}]
 
 
-def build_why_prompt(score, question, patient=None):
-    """For the 'Ask why' box in the app."""
-    factors = "; ".join(factor_text(f, patient) for f in score["top_factors"][:5])
-    return [{"role": "system", "content": SYSTEM},
-            {"role": "user", "content": f"Model output: {score['decision']}, 6-month risk "
-             f"{score['risk_6m']:.0%}, factors: {factors}.\nDoctor asks: {question}\n"
-             "Answer in under 120 words using only the model output above."}]
+COACH_TEMPLATE = """PATIENT CONTEXT (de-identified)
+{summary} Model recommendation: {decision}.
+
+GUIDELINE PASSAGES (retrieved for this question)
+{passages}
+
+DOCTOR'S QUESTION
+{question}
+
+TASK
+Answer the question as a conversation coach, in under 120 words, using ONLY the guideline passages above.
+Where it helps, suggest words the doctor could actually say. End by naming the note(s) you used in [brackets].
+If the passages do not answer the question, say so in one sentence and do not guess."""
+
+
+def build_coach_prompt(score, question, passages, summary="No summary available."):
+    """For the 'Ask the guidelines' box: answers communication questions from the retrieved notes."""
+    body = COACH_TEMPLATE.format(summary=summary, decision=score["decision"], question=question,
+                                 passages="\n".join(f"- {p}" for p in passages))
+    return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": body}]

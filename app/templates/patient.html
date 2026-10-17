@@ -161,23 +161,34 @@
 </section>
 
 <section class="card" id="why">
-  <h2>Ask why</h2>
-  <p class="small muted">Ask about this patient's result. Answers use only the model's output above.</p>
+  <h2>Ask the guidelines</h2>
+  <p class="small muted">A conversation coach: ask how to handle part of the conversation. Granite answers from our
+    care-planning guideline notes only, and says so when they don't cover the question.</p>
   <form method="post" action="/patient/{{ p.ref }}/why#why">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
     <input type="hidden" name="doctor" value="{{ doc.field }}">
     <label for="question">Question</label>
     <textarea id="question" name="question" required maxlength="{{ max_question }}" rows="2"
-      placeholder="e.g. Why is the risk so high when blood pressure is normal?">{{ question }}</textarea>
+      placeholder="e.g. The family wants everything done. How do I respond?">{{ question }}</textarea>
     <button type="submit">Ask</button>
   </form>
   {% if why %}
     <p class="sheetmeta">
       {% if why.used_llm %}<span class="badge review">Answered by Granite</span>
-      {% else %}<span class="badge judge">Granite unavailable</span>{% endif %}
+      {% elif why.passages %}<span class="badge judge">Granite unavailable: guidance shown</span>
+      {% else %}<span class="badge none">Not covered by the notes</span>{% endif %}
     </p>
     {% for w in why.warnings %}<p class="alert" role="alert">{{ w }}</p>{% endfor %}
     <div class="briefing">{{ why.answer }}</div>
+    {% if why.passages %}
+    <details>
+      <summary>Guidance used ({{ why.passages | length }} passages)</summary>
+      <ul class="small">
+        {% for g in why.passages %}<li>{{ g.file }} · {{ g.title }}</li>{% endfor %}
+      </ul>
+      {% if why.sources %}<p class="small muted">Sources: {{ why.sources | join("; ") }}</p>{% endif %}
+    </details>
+    {% endif %}
   {% endif %}
 </section>
 {% endblock %}
