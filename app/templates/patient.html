@@ -96,29 +96,57 @@
   </section>
 </div>
 
-<section class="card">
-  <h2>Conversation briefing</h2>
-  <form class="inline" method="post" action="/patient/{{ p.ref }}/briefing">
+<section class="card" id="briefing">
+  <h2>Conversation prep sheet</h2>
+  <p class="small muted">Written by IBM Granite running on this LinuxONE server, from the model's output and our
+    care-planning guideline notes. Nothing leaves the server. Can take up to 90 seconds.</p>
+  <form class="inline" method="post" action="/patient/{{ p.ref }}/briefing#briefing">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
     <label>Language
       <select name="language">
         {% for l in languages %}<option{% if l == language %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select>
     </label>
-    <button type="submit">Draft briefing with Granite</button>
+    <button type="submit">Draft prep sheet</button>
   </form>
   {% if briefing %}
-    {% if briefing.text %}
-      <div class="briefing">{{ briefing.text }}</div>
-    {% else %}
-      <p class="alert">Granite isn't connected yet. When genai/briefing.py provides generate_briefing(), the
-        briefing appears here. The prompt below is what will be sent to it (on LinuxONE; nothing leaves the server).</p>
-    {% endif %}
+    <p class="sheetmeta">
+      {% if briefing.used_llm %}<span class="badge review">Written by Granite</span>
+      {% else %}<span class="badge judge">Template (Granite unavailable)</span>{% endif %}
+      <span class="small muted">{{ briefing.language }} · {{ briefing.latency_s }} s</span>
+    </p>
+    {% for w in briefing.warnings %}<p class="alert" role="alert">{{ w }}</p>{% endfor %}
+    <div class="briefing">{{ briefing.text }}</div>
+    {% if briefing.passages %}
     <details>
-      <summary>Prompt sent to Granite</summary>
-      {% for m in briefing.prompt %}<pre>[{{ m.role }}]
-{{ m.content }}</pre>{% endfor %}
+      <summary>Guidance used ({{ briefing.passages | length }} passages)</summary>
+      <ul class="small">
+        {% for g in briefing.passages %}<li>{{ g.file }} · {{ g.title }}</li>{% endfor %}
+      </ul>
+      {% if briefing.sources %}<p class="small muted">Sources: {{ briefing.sources | join("; ") }}</p>{% endif %}
     </details>
+    {% endif %}
+    <p class="small muted">Draft for the clinician only. Check it before use; it never replaces your judgement.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="why">
+  <h2>Ask why</h2>
+  <p class="small muted">Ask about this patient's result. Answers use only the model's output above.</p>
+  <form method="post" action="/patient/{{ p.ref }}/why#why">
+    <input type="hidden" name="csrf" value="{{ s.csrf }}">
+    <label for="question">Question</label>
+    <textarea id="question" name="question" required maxlength="{{ max_question }}" rows="2"
+      placeholder="e.g. Why is the risk so high when blood pressure is normal?">{{ question }}</textarea>
+    <button type="submit">Ask</button>
+  </form>
+  {% if why %}
+    <p class="sheetmeta">
+      {% if why.used_llm %}<span class="badge review">Answered by Granite</span>
+      {% else %}<span class="badge judge">Granite unavailable</span>{% endif %}
+    </p>
+    {% for w in why.warnings %}<p class="alert" role="alert">{{ w }}</p>{% endfor %}
+    <div class="briefing">{{ why.answer }}</div>
   {% endif %}
 </section>
 {% endblock %}

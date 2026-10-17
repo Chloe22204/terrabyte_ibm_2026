@@ -6,7 +6,7 @@ WORKDIR /srv
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ml/coxph.py ml/logit.py ml/scoring.py ml/explain.py /srv/ml/
-COPY genai/prompt.py /srv/genai/
+COPY genai /srv/genai
 COPY app/dashboard.py app/security.py app/manage_users.py /srv/app/
 COPY app/templates /srv/app/templates
 COPY app/static /srv/app/static
