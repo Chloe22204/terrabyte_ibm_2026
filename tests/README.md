@@ -22,13 +22,15 @@ themselves if it isn't there.
 
 ## Stress test results
 
-Windows laptop, 17 Oct 2026 (LinuxONE numbers to be added):
+Same 6 tests on a Windows laptop and on our **IBM LinuxONE z17** server (3 virtual CPUs), 17 Oct 2026. All 6 pass on both.
 
-| Test | Load | Result |
-|---|---|---|
-| Concurrent doctors | 30 users at once, 600 requests | 0 errors, median 336 ms, p95 434 ms, 54 req/s |
-| Scoring burst | 200 patient pages from 50 threads | All live-scored, p95 547 ms |
-| Role isolation under load | 20 mixed doctor/auditor users | No role ever saw the other's pages |
-| Password spraying | 200 usernames from one IP | Locked after exactly 20; correct password then refused |
-| Simultaneous logins | 50 at the same moment | 50 unique working sessions |
-| Model throughput | All 1,821 test patients | 212 patients/s (4.7 ms each, incl. 20 bootstrap models + XGBoost) |
+| Test | Load | Windows laptop | **IBM z17 (LinuxONE)** |
+|---|---|---|---|
+| Concurrent doctors | 30 users at once, 600 requests | 0 errors, median 336 ms, p95 434 ms, 54 req/s | **0 errors, median 76 ms, p95 126 ms, 241 req/s** |
+| Scoring burst | 200 patient pages from 50 threads | All live-scored, p95 547 ms | **All live-scored, median 103 ms, p95 128 ms** |
+| Role isolation under load | 20 mixed doctor/auditor users | No role ever saw the other's pages | **Same: no leaks** |
+| Password spraying | 200 usernames from one IP | Locked after exactly 20; correct password then refused | **Same: locked after 20 (200 attempts in 1.1 s)** |
+| Simultaneous logins | 50 at the same moment | 50 unique working sessions | **Same: 50 unique sessions** |
+| Model throughput | All 1,821 test patients | 212 patients/s (4.7 ms each) | **1,381 patients/s (0.7 ms each)** |
+
+Throughput counts the full model per patient (main model, 20 bootstrap models and XGBoost). On the z17, the dashboard served about **4.5x more requests per second** than on the laptop, and scored patients about **6.5x faster**. The z17 run was done while Granite was idle, so the two didn't compete for CPU.
