@@ -25,7 +25,7 @@
   {% endif %}
   <form class="inline" method="post" action="/benchmark">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
-    <button type="submit">Benchmark {{ bench_n }} patients</button>
+    <button class="secondary" type="submit">Benchmark {{ bench_n }} patients</button>
     {% if bench %}
       {% if bench.error %}<span class="alert">{{ bench.error }}</span>
       {% else %}<span><strong>{{ "{:,.0f}".format(bench.per_s) }} patients per second</strong>
@@ -63,7 +63,7 @@
     </select>
   </label>
   <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Prognostic discordance only</label>
-  <button type="submit">Apply</button>
+  <button class="secondary" type="submit">Apply</button>
   <a href="/">Clear</a>
 </form>
 

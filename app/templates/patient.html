@@ -20,7 +20,7 @@
   <p>{{ info[1] }}</p>
 </section>
 
-{# b) the three cards #}
+{# b) risk, doctor + model, survival curve, main factors #}
 <div class="grid">
   <section class="card">
     <h2>6-month mortality risk</h2>
@@ -54,14 +54,14 @@
     {% else %}
       <p class="small muted">{% if doc.source == "recorded" %}The treating doctor's recorded estimate.{% else %}Your estimate.{% endif %}
         All three bars are 6-month mortality risk.</p>
-      <svg class="cmp" viewBox="0 0 420 96" role="img"
+      <svg class="cmp" viewBox="0 0 440 96" role="img"
            aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
         {% for key, label, v in [("doctor", "Doctor", doc.risk), ("model", "TimeToTalk", r.risk_6m), ("combined", "Combined", doc.combined)] %}
         {% set y = loop.index0 * 32 %}
         <text class="lbl" x="0" y="{{ y + 17 }}">{{ label }}</text>
         <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="4"/>
         <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="4"/>
-        <text class="val" x="420" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
+        <text class="val" x="440" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
         {% endfor %}
       </svg>
       {% if doc.gap_flag %}
@@ -78,7 +78,7 @@
       <div class="row">
         <input id="doctor-estimate" type="number" name="doctor" min="0" max="100" step="1" required
                value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
-        <button type="submit">Compare</button>
+        <button class="secondary" type="submit">Compare</button>
       </div>
     </form>
     <div class="actions">
@@ -97,7 +97,7 @@
     </div>
   </section>
 
-  <section class="card wide">
+  <section class="card">
     <h2>Estimated survival over 12 months</h2>
     <svg class="curve" viewBox="0 0 {{ curve.w }} {{ curve.h }}" role="img"
          aria-label="Estimated survival curve over 12 months{% if curve.mark %}; 6 months: {{ curve.mark[2] }}{% endif %}">
@@ -121,23 +121,23 @@
     </svg>
     <p class="small muted">Curve shape from the Cox model, scaled to match the 6-month risk. An estimate, not a prediction of when.</p>
   </section>
-</div>
 
-{# c) top factors #}
-<section class="card">
-  <h2>Main factors</h2>
-  <ul class="factors">
-    {% for b in bars %}
-    <li>
-      <span class="fname">{{ b.name }}</span>
-      <svg viewBox="0 0 224 14" class="fbar" role="img" aria-label="{{ 'raises' if b.up else 'lowers' }} risk">
-        <rect class="{{ 'up' if b.up else 'down' }}" x="0" y="1" width="{{ b.width }}" height="12" rx="3"/>
-      </svg>
-      <span class="small {{ 'upt' if b.up else 'downt' }}">{{ "raises risk" if b.up else "lowers risk" }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-</section>
+  {# c) top factors #}
+  <section class="card">
+    <h2>Main factors</h2>
+    <ul class="factors">
+      {% for b in bars %}
+      <li>
+        <span class="fname">{{ b.name }}</span>
+        <svg viewBox="0 0 224 14" class="fbar" role="img" aria-label="{{ 'raises' if b.up else 'lowers' }} risk">
+          <rect class="{{ 'up' if b.up else 'down' }}" x="0" y="1" width="{{ b.width }}" height="12" rx="3"/>
+        </svg>
+        <span class="small {{ 'upt' if b.up else 'downt' }}">{{ "raises risk" if b.up else "lowers risk" }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
 
 {# d) prep sheet #}
 <section class="card" id="briefing">

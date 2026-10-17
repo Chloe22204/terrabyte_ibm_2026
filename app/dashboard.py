@@ -465,7 +465,7 @@ def patient_view(request, s, p, briefing=None, language="English", why=None, que
     risk = result["risk_6m"]
     ctx = {"s": s, "p": p, "r": result, "live": live, "mode": "LinuxONE API" if USE_API else "local scorer",
            "info": DECISION_INFO[result["decision"]],
-           "curve": curve_svg(result["survival_curve"]["days"], result["survival_curve"]["survival"], w=900, h=300, pad=56),
+           "curve": curve_svg(result["survival_curve"]["days"], result["survival_curve"]["survival"], w=560, h=300, pad=62),
            "bars": factor_bars(result["top_factors"]),
            "range": {"lo": 20 + 360 * lo, "hi": 20 + 360 * hi, "risk": 20 + 360 * risk,
                      "t_mid": 20 + 360 * THRESHOLDS["t_mid"], "t_high": 20 + 360 * THRESHOLDS["t_high"]},
