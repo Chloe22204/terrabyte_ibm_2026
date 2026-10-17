@@ -137,7 +137,6 @@ python3 genai/prep_sheet.py --no-llm                      # template only: check
 python3 genai/prep_sheet.py                               # with Granite: ~1.5-2 min (reads ~15, writes ~4.7 tokens/s)
 python3 genai/prep_sheet.py --language Chinese
 python3 genai/prep_sheet.py --language Malay
-python3 genai/prep_sheet.py --language Tamil
 python3 genai/prep_sheet.py --why "Why is this patient flagged now?"
 grep "tokens per second" ~/llama.log | tail -3            # speed, for the video
 ```

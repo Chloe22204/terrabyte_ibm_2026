@@ -119,6 +119,8 @@ Ranking accuracy is similar across groups, and predicted risk matches observed r
 - Repeated measurements per patient → a real "risk is rising" trigger
 - Close the fairness gap in how many deaths are flagged for younger and minority patients, e.g. group-aware thresholds, checked on local data
 - Clinical pilot with the palliative care team, and link with Singapore's national advance care planning programme
+- **Tamil:** removed. Granite 3.3 does not support Tamil and its output was garbled. Next step: a human-verified
+  phrasebook (opening line, key questions) in Tamil and Malay, or a dedicated translation model
 - Fine-tune Granite on local care-planning guidance in the four official languages
 
 ## Ethics

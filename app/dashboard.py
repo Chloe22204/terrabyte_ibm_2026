@@ -60,8 +60,8 @@ DECISION_INFO = {
     "Review in 2 weeks": ("review", "Moderate risk. Re-check in two weeks or sooner if the condition changes."),
     "No action": ("none", "Low 6-month risk on current information. No conversation prompted."),
 }
-LANGUAGE_KEYS = {"English": "English", "Chinese (中文)": "Chinese", "Malay (Melayu)": "Malay",
-                 "Tamil (தமிழ்)": "Tamil"}      # display label -> genai/prep_sheet.py language
+LANGUAGE_KEYS = {"English": "English", "Chinese (中文)": "Chinese",
+                 "Malay (Melayu)": "Malay"}      # display label -> genai/prep_sheet.py language (no Tamil: Granite 3.3 lacks it)
 LANGUAGES = list(LANGUAGE_KEYS)
 MAX_QUESTION = 500
 BENCH_N = 500
