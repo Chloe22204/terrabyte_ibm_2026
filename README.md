@@ -47,7 +47,7 @@ curl localhost:8000/health
 | **Leaky columns excluded** (death, d.time, hospdead, prg2m/6m, dnr/dnrday, surv2m/6m, slos, costs, avtisst, sfdm2) | The test for each column: would a doctor know it on day 3? If not, it's out. |
 | **Race, income and education are not model inputs** | Fairness. They are used only to audit performance across groups (`fairness.csv`). |
 | Missing labs → SUPPORT investigators' "normal" values, others → training median, plus a "was missing" flag | A missing lab usually means the doctor didn't think it was needed. This is documented and reproducible. |
-| 60/20/20 split, seed 42; thresholds and recalibration use **validation only** | The test set is touched once, at the end. |
+| 60/20/20 split stratified on 6-month status, seed 42; thresholds and recalibration use **validation only** | The test set is touched once, at the end. |
 | Recalibration only kept if it helps on a held-out half of validation | Avoids "fixing" calibration that was already fine. |
 | **"Clinician judgement"** output when the uncertainty is wide or the two models disagree | The model should say when it doesn't know. |
 | **Rejected** a "risk is rising fast" alert | SUPPORT2 has one snapshot per patient, so we can't validate trends. It's listed under next steps. |

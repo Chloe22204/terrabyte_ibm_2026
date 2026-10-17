@@ -17,17 +17,14 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 
-from train import load, build_features, six_month_status, SEED
+from train import load, build_features, six_month_status, split_indices, SEED
 
 
 def main(a):
     torch.manual_seed(SEED)
-    rng = np.random.default_rng(SEED)
     df = load(a.data).reset_index(drop=True)
     T, E = df["d.time"].to_numpy(float), df["death"].to_numpy(int)
-    perm = rng.permutation(len(df))                 # same split as train.py (same seed, same order)
-    n_tr, n_va = int(0.6 * len(df)), int(0.2 * len(df))
-    tr, va, te = perm[:n_tr], perm[n_tr:n_tr + n_va], perm[n_tr + n_va:]
+    tr, va, te = split_indices(T, E)                # same split as train.py
     X, _ = build_features(df, tr)
     X = X.to_numpy(np.float32)
     mu, sd = X[tr].mean(0), X[tr].std(0) + 1e-6

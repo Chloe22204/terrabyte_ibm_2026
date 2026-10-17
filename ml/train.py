@@ -9,6 +9,7 @@ Produces in --out:
   calibrator.json           isotonic recalibration map (fit on validation set)
   thresholds.json           decision-layer thresholds + how they were chosen
   metrics.json              every number for the pitch
+  metrics.txt               same numbers + thresholds + fairness table, as readable text
   patients_scored.csv       precomputed test-set results (demo fallback)
   fairness.csv              performance by age band / sex / race
   fig_*.png                 charts for the video
@@ -20,7 +21,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
+from sklearn.model_selection import train_test_split
 
 from coxph import CoxPH, concordance_index, kaplan_meier
 
@@ -88,6 +90,16 @@ def six_month_status(T, E, horizon=180):
     return y
 
 
+def split_indices(T, E, seed=SEED):
+    """60/20/20 split, stratified on 6-month status (died / survived / censored early) so every
+    part has the same death rate. accelerator_model.py imports this to get the identical split."""
+    strata = np.nan_to_num(six_month_status(T, E), nan=2).astype(int)
+    idx = np.arange(len(T))
+    tr, rest = train_test_split(idx, test_size=0.4, stratify=strata, random_state=seed)
+    va, te = train_test_split(rest, test_size=0.5, stratify=strata[rest], random_state=seed)
+    return tr, va, te
+
+
 def calibration_table(pred_risk, T, E, horizon=180, bins=10):
     """Predicted vs Kaplan-Meier observed risk by decile (handles censoring)."""
     q = pd.qcut(pred_risk, bins, labels=False, duplicates="drop")
@@ -106,10 +118,8 @@ def main(args):
     T = df["d.time"].to_numpy(float)
     E = df["death"].to_numpy(int)
 
-    # ---------------------------------------------------------------- split 60/20/20
-    perm = rng.permutation(len(df))
-    n_tr, n_va = int(0.6 * len(df)), int(0.2 * len(df))
-    tr, va, te = perm[:n_tr], perm[n_tr:n_tr + n_va], perm[n_tr + n_va:]
+    # ---------------------------------------------------------------- split 60/20/20 (stratified)
+    tr, va, te = split_indices(T, E)
 
     X, fills = build_features(df, tr)
     feats = list(X.columns)
@@ -232,6 +242,18 @@ def main(args):
         m = (dec_te == d) & k_te
         metrics[f"died_6m_rate_[{d}]"] = float(y_te[m].mean()) if m.any() else None
 
+    # "flagged" = the model asks for action (due now or review); scored on patients with a known 6m outcome
+    flag_te = np.isin(dec_te, ["Conversation due now", "Review in 2 weeks"])
+    yk, fk = y_te[k_te], flag_te[k_te]
+    tp, fn = int(np.sum(fk & (yk == 1))), int(np.sum(~fk & (yk == 1)))
+    fp, tn = int(np.sum(fk & (yk == 0))), int(np.sum(~fk & (yk == 0)))
+    metrics["auprc_6m_test"] = float(average_precision_score(yk, r_te[k_te]))
+    metrics["brier_6m_test"] = float(brier_score_loss(yk, r_te[k_te]))
+    metrics["flag_sensitivity_test"] = tp / max(tp + fn, 1)
+    metrics["flag_specificity_test"] = tn / max(tn + fp, 1)
+    metrics["flag_ppv_test"] = tp / max(tp + fp, 1)
+    metrics["flag_rate_test"] = float(fk.mean())
+
     # ---------------------------------------------------------------- physicians vs model (test set)
     if "prg6m" in df.columns:
         phys = df["prg6m"].to_numpy(float)[te]
@@ -247,6 +269,16 @@ def main(args):
         metrics["pct_of_6m_deaths_physician_gave_>=50pct_survival"] = float(np.mean(phys[died] >= 0.5))
         metrics["pct_of_6m_deaths_model_flagged_due_or_review"] = float(
             np.mean(np.isin(dec_te[died], ["Conversation due now", "Review in 2 weeks"])))
+        # same flag budget: if doctors flagged as many patients as the model (their k highest-risk),
+        # how many of the patients who died within 6 months would each catch?
+        k = int(flag_te[mk].sum())
+        doc_flag = np.zeros(mk.sum(), bool)
+        doc_flag[np.argsort(-phys_risk[mk], kind="mergesort")[:k]] = True
+        need = y_te[mk] == 1
+        metrics["same_budget_n_flagged"] = k
+        metrics["same_budget_deaths"] = int(need.sum())
+        metrics["same_budget_model_caught"] = int(np.sum(flag_te[mk] & need))
+        metrics["same_budget_physician_caught"] = int(np.sum(doc_flag & need))
         cal_phys = calibration_table(phys_risk[mk], T[te][mk], E[te][mk])
     else:
         cal_phys = None
@@ -287,8 +319,11 @@ def main(args):
             m = (g == level) & k_te
             if m.sum() < 30 or len(np.unique(y_te[m])) < 2:
                 continue
+            died_g = m & (y_te == 1)
             rows.append({"group": gname, "level": level, "n": int(m.sum()),
                          "auc": roc_auc_score(y_te[m], r_te[m]),
+                         "sensitivity": float(flag_te[died_g].mean()),
+                         "flag_rate": float(flag_te[m].mean()),
                          "mean_predicted_risk": float(r_te[m].mean()),
                          "observed_6m_death_rate": float(y_te[m].mean())})
     fair = pd.DataFrame(rows)
@@ -342,9 +377,12 @@ def main(args):
     fig.tight_layout(); fig.savefig(f"{args.out}/fig_risk_factors.png", dpi=160)
 
     json.dump(metrics, open(f"{args.out}/metrics.json", "w"), indent=1, default=float)
-    print(json.dumps(metrics, indent=1, default=float))
-    print("\nThresholds:", json.dumps(thresholds, indent=1))
-    print("\nFairness:\n", fair.to_string(index=False))
+    report = "\n".join([json.dumps(metrics, indent=1, default=float),
+                        "\nThresholds: " + json.dumps(thresholds, indent=1),
+                        "\nFairness:\n" + fair.to_string(index=False)])
+    print(report)
+    with open(f"{args.out}/metrics.txt", "w", encoding="utf-8") as f:   # plain-text copy for README / video
+        f.write(report + "\n")
 
 
 if __name__ == "__main__":
