@@ -23,13 +23,16 @@ LANGUAGES = {"English": "English", "Chinese": "Simplified Chinese", "Malay": "Ba
 MAX_TOKENS = 300     # Granite writes ~4.7 tokens/s on our 3 vCPUs -> at most ~65 s of output
 PASSAGE_SENTENCES = 2  # Granite reads ~15 tokens/s, so each passage is cut to its first 2 sentences
 
-# One retrieval query per prep-sheet heading, so every heading has guidance behind it.
-HEADING_QUERIES = [  # (query, how many passages)
-    ("prepare before the conversation who should be present family interpreter setting", 1),
-    ("open questions understanding illness goals fears what matters most", 1),
-    ("phrases words to avoid say instead", 1),
-    ("document record care plan advance care planning next step review", 1),
+# One retrieval per prep-sheet heading, searched only within that heading's note, so every heading
+# gets guidance (a broad search let documenting.md win the "questions" query). TF-IDF picks the best
+# passage inside the note for this patient.
+HEADING_QUERIES = [  # (query, how many passages, notes to search)
+    ("prepare before the conversation who should be present family interpreter setting", 1, ["setting_up.md"]),
+    ("open questions understanding illness goals fears what matters most", 1, ["questions_to_explore.md"]),
+    ("phrases words to avoid say instead", 1, ["language_to_avoid.md"]),
+    ("document record care plan advance care planning next step review", 1, ["documenting.md"]),
 ]
+WHY_NOTES = ["when_to_start.md", "uncertainty.md"]
 
 
 def _norm(patient):
@@ -78,8 +81,8 @@ def gather_passages(score, max_chunks=5):
     if score["decision"] == "Clinician judgement" or score.get("models_disagree"):
         why_query += " uncertainty prognosis range"
     picked, seen = [], set()
-    for query, k in [(why_query, 1)] + HEADING_QUERIES:
-        for c in retrieve(query, k=k + 2):
+    for query, k, files in [(why_query, 1, WHY_NOTES)] + HEADING_QUERIES:
+        for c in retrieve(query, k=k + 2, files=files):
             key = (c["file"], c["title"])
             if key not in seen:
                 picked.append(c)

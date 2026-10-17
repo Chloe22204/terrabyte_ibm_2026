@@ -58,17 +58,19 @@ class Retriever:
         norm = np.linalg.norm(v)
         return v / norm if norm else v
 
-    def search(self, query, k=4):
+    def search(self, query, k=4, files=None):
+        """files: optional list of note filenames to search within (e.g. ["questions_to_explore.md"])."""
         sims = self.M @ self._vec(Counter(tokenize(query)))
-        top = np.argsort(-sims)[:k]
-        return [dict(self.chunks[i], score=float(sims[i])) for i in top if sims[i] > 0]
+        allowed = [i for i, c in enumerate(self.chunks) if files is None or c["file"] in files]
+        top = sorted(allowed, key=lambda i: -sims[i])[:k]
+        return [dict(self.chunks[i], score=float(sims[i])) for i in top]
 
 
 _default = None
 
 
-def retrieve(query, k=4):
+def retrieve(query, k=4, files=None):
     global _default
     if _default is None:
         _default = Retriever()
-    return _default.search(query, k)
+    return _default.search(query, k, files)
