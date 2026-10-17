@@ -66,7 +66,7 @@
       {% for g in dz_groups %}<option value="{{ g }}"{% if g == dz %} selected{% endif %}>{{ g }}</option>{% endfor %}
     </select>
   </label>
-  <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Prognostic discordance only</label>
+  <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Where doctors and AI differ</label>
   <button class="secondary" type="submit">Apply</button>
   <a href="/">Clear</a>
 </form>
