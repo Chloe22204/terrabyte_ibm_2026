@@ -3,3 +3,10 @@ artifacts/bootstraps/
 __pycache__/
 *.log
 .env
+app/users.json
+app/users.json.tmp
+app/logs/
+*.pem
+.venv/
+.claude/launch.json
+.pytest_cache/

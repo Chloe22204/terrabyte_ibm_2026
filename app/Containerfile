@@ -1,0 +1,21 @@
+# Build from repo root on LinuxONE:  podman build -t timetotalk-dashboard -f app/Containerfile .
+# Patient data, users and TLS certificates are mounted at run time, never baked into the image.
+FROM python:3.11-slim
+RUN useradd --create-home appuser
+WORKDIR /srv
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY ml/coxph.py ml/logit.py ml/scoring.py ml/explain.py /srv/ml/
+COPY genai/prompt.py /srv/genai/
+COPY app/dashboard.py app/security.py app/manage_users.py /srv/app/
+COPY app/templates /srv/app/templates
+COPY app/static /srv/app/static
+COPY artifacts_logistic /srv/artifacts_logistic
+ENV TTT_ARTIFACTS=/srv/artifacts_logistic TTT_DATA=/data/support2.csv \
+    TTT_USERS_FILE=/config/users.json TTT_DASH_AUDIT_LOG=/srv/logs/dashboard_audit.log
+RUN mkdir -p /srv/logs && chown -R appuser /srv/logs
+USER appuser
+EXPOSE 8501
+# HTTPS only: the container refuses to start without a certificate in /certs
+CMD ["uvicorn", "app.dashboard:app", "--host", "0.0.0.0", "--port", "8501", \
+     "--ssl-keyfile", "/certs/key.pem", "--ssl-certfile", "/certs/cert.pem"]

@@ -46,8 +46,10 @@ clinician's own assessment should lead."""
 FRIENDLY = {
     "age": "age", "num.co": "number of other illnesses", "scoma": "level of consciousness",
     "alb": "low albumin (nutrition)", "bili": "bilirubin (liver)", "crea": "creatinine (kidneys)",
-    "bun": "urea (kidneys)", "adlsc": "difficulty with daily activities", "aps": "overall physiology score",
-    "sps": "overall physiology score", "meanbp": "blood pressure", "pafi": "oxygen levels",
+    "bun": "urea (kidneys)", "adlsc": "difficulty with daily activities", "aps": "APACHE III physiology score",
+    "sps": "SUPPORT physiology score", "meanbp": "blood pressure", "pafi": "oxygen levels",
+    "ca": "cancer", "dzgroup": "diagnosis", "sex": "sex", "temp": "temperature", "sod": "sodium",
+    "ph": "blood pH", "glucose": "blood glucose", "urine": "urine output", "diabetes": "diabetes",
     "hday": "days in hospital before assessment", "ca_metastatic": "cancer that has spread",
     "dementia": "dementia", "wblc": "white cell count", "resp": "breathing rate", "hrt": "heart rate",
 }

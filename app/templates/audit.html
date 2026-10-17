@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">Latest 300 events, newest first. Patient references are pseudonyms; no clinical values are recorded.</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Time (UTC)</th><th>Event</th><th>User</th><th>Patient</th><th>Details</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+  <tr>
+    <td class="mono">{{ e.ts }}</td>
+    <td>{{ e.event }}</td>
+    <td>{{ e.user or "" }}</td>
+    <td class="mono">{{ e.patient or "" }}</td>
+    <td class="mono small">{% for k, v in e.items() if k not in ("ts", "event", "user", "patient") %}{{ k }}={{ v }} {% endfor %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">No events yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
