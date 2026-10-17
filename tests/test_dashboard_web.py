@@ -161,8 +161,10 @@ def test_briefing_requires_csrf_and_valid_language(doctor, some_ref):
     assert doctor.post(f"/patient/{some_ref}/briefing", data={"csrf": "forged"}).status_code == 403
     assert doctor.post(f"/patient/{some_ref}/briefing",
                           data={"csrf": token, "language": "Klingon"}).status_code == 404
-    r = doctor.post(f"/patient/{some_ref}/briefing", data={"csrf": token, "language": "Tamil (தமிழ்)"})
-    assert r.status_code == 200 and "Conversation prep sheet" in r.text and "Tamil" in r.text
+    assert doctor.post(f"/patient/{some_ref}/briefing",                # removed: Granite 3.3 lacks Tamil
+                          data={"csrf": token, "language": "Tamil (தமிழ்)"}).status_code == 404
+    r = doctor.post(f"/patient/{some_ref}/briefing", data={"csrf": token, "language": "Malay (Melayu)"})
+    assert r.status_code == 200 and "Conversation prep sheet" in r.text and "Malay" in r.text
 
 
 def test_csrf_token_from_another_session_is_rejected(client, some_ref):

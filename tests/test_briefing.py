@@ -58,7 +58,7 @@ def test_template_when_granite_is_down(doctor, some_ref, granite_down):
 
 
 @pytest.mark.parametrize("label,key", [("English", "English"), ("Chinese (中文)", "Simplified Chinese"),
-                                       ("Malay (Melayu)", "Bahasa Melayu"), ("Tamil (தமிழ்)", "Tamil")])
+                                       ("Malay (Melayu)", "Bahasa Melayu")])
 def test_language_reaches_granite_prompt(doctor, some_ref, granite_up, label, key):
     post_briefing(doctor, some_ref, label)
     assert f"in {key}" in granite_up[0][1]["content"]

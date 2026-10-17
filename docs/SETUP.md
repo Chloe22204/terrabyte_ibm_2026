@@ -137,7 +137,6 @@ python3 genai/prep_sheet.py --no-llm                      # template only: check
 python3 genai/prep_sheet.py                               # with Granite: ~1.5-2 min (reads ~15, writes ~4.7 tokens/s)
 python3 genai/prep_sheet.py --language Chinese
 python3 genai/prep_sheet.py --language Malay
-python3 genai/prep_sheet.py --language Tamil
 python3 genai/prep_sheet.py --why "Why is this patient flagged now?"
 grep "tokens per second" ~/llama.log | tail -3            # speed, for the video
 ```
@@ -174,7 +173,7 @@ podman exec ttt whoami                              # appuser (not root)
 |---|---|
 | `GET /health` | status, platform, Granite up/down |
 | `POST /score` | risk, uncertainty, decision, top factors |
-| `POST /prep_sheet` | score + Granite prep sheet (`language`: English / Chinese / Malay / Tamil) |
+| `POST /prep_sheet` | score + Granite prep sheet (`language`: English / Chinese / Malay) |
 | `POST /ask_why` | short answer to a doctor's question (`question`, up to 500 characters) |
 | `POST /benchmark?n=1000` | scoring speed |
 

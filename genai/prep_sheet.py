@@ -19,7 +19,8 @@ from retriever import retrieve  # noqa: E402
 from granite import chat, GraniteUnavailable  # noqa: E402
 
 # Whitelist: the language string goes into the prompt, so only these values are allowed.
-LANGUAGES = {"English": "English", "Chinese": "Simplified Chinese", "Malay": "Bahasa Melayu", "Tamil": "Tamil"}
+# Tamil removed: Granite 3.3 does not support it and the output was garbled (see README limitations).
+LANGUAGES = {"English": "English", "Chinese": "Simplified Chinese", "Malay": "Bahasa Melayu"}
 MAX_TOKENS = 300     # Granite writes ~4.7 tokens/s on our 3 vCPUs -> at most ~65 s of output
 PASSAGE_SENTENCES = 2  # Granite reads ~15 tokens/s, so each passage is cut to its first 2 sentences
 
