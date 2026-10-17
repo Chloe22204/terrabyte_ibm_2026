@@ -27,8 +27,9 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
 ## Run it
 
 ```bash
-# 1. data: download SUPPORT2 from https://archive.ics.uci.edu/dataset/880 → data/support2.csv
-# 2. train + evaluate (≈1 min on 3 vCPUs)
+# 1. data: download https://hbiostat.org/data/repo/support2csv.zip, unzip it, save the support2.csv inside as data/support2.csv
+# 2. train + evaluate (≈1 min on 3 vCPUs). artifacts/bootstraps/ is not in git: on a fresh clone run this
+#    (with --bootstraps 20) before building the container, otherwise the uncertainty ranges are missing
 python ml/train.py --data data/support2.csv --out artifacts --bootstraps 20
 # 3. optional: accelerator second-opinion model
 python ml/accelerator_model.py --data data/support2.csv --out artifacts
