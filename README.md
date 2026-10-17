@@ -19,7 +19,7 @@ SUPPORT2 data ─► ml/train.py ─► artifacts/ (JSON models, thresholds, cha
                      │
                      ▼
          genai/ IBM Granite (llama.cpp, local) + RAG over care-planning guidelines
-                     │  → conversation prep sheet (EN / 中文 / Melayu / தமிழ்) + "ask the guidelines" coach
+                     │  → conversation prep sheet (EN / 中文 / Melayu) + "ask the guidelines" coach
                      ▼
          app/ Streamlit clinician dashboard
 ```
@@ -42,7 +42,7 @@ curl localhost:8000/health
 
 | Decision | Why |
 |---|---|
-| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.815 vs 0.803). Every factor is still explainable, so a clinician can check it. |
+| **Logistic regression** for 6-month risk as the main model | SUPPORT2 follows every patient to death or past 6 months, so a model aimed directly at "died within 6 months" loses nothing to censoring. On the same test split it beat our Cox model (AUC 0.813 vs 0.804). Every factor is still explainable, so a clinician can check it. |
 | Cox model kept only for the **survival-curve shape** | The dashboard shows a curve over a year. The Cox curve is rescaled to pass through the logistic 6-month risk, so the two never disagree. |
 | Wrote our own numpy/scipy Cox model instead of `lifelines` | `lifelines` needs `autograd-gamma`, which failed to build in testing. Ours has no compiled dependencies, so it runs on s390x. |
 | All models saved as plain JSON | No pickle files in the API (a pickle can run code when loaded), and the container needs only numpy. |
