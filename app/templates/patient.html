@@ -1,36 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Patient {{ p.ref }}{% endblock %}
 {% block content %}
-<p><a href="/">← Worklist</a></p>
+{% set plat = platform_info() %}
+<a class="back" href="/">← Worklist</a>
 
 <div class="pagehead">
   <div>
-    <h1>Patient <span class="mono">{{ p.ref }}</span></h1>
+    <h1>Patient <span class="mono">#{{ p.ref }}</span></h1>
     <p class="muted">{{ p.age }}-year-old {{ p.sex }} · {{ p.dz }}</p>
   </div>
-  <span class="mode">{% if live %}Scored live: {{ mode }} · {{ "%.1f" | format(score_ms) }} ms{% else %}Precomputed result (live scoring unavailable){% endif %}</span>
+  {% if live and plat.linuxone %}<span class="mode z">Scored live on {{ plat.name }} · {{ "%.1f" | format(score_ms) }} ms</span>
+  {% elif live %}<span class="mode">Scored live: {{ mode }} · {{ "%.1f" | format(score_ms) }} ms</span>
+  {% else %}<span class="mode">Precomputed result (live scoring unavailable)</span>{% endif %}
 </div>
 
+{# a) decision banner #}
 <section class="decision {{ info[0] }}">
   <span class="badge {{ info[0] }}">{{ r.decision }}</span>
   <p>{{ info[1] }}</p>
 </section>
 
+{# b) the three cards #}
 <div class="grid">
   <section class="card">
     <h2>6-month mortality risk</h2>
-    <p class="big">{{ (r.risk_6m * 100) | round | int }}%</p>
-    <p class="muted">80% range {{ (r.risk_6m_interval_80[0] * 100) | round | int }}–{{ (r.risk_6m_interval_80[1] * 100) | round | int }}%
+    <p class="big">{{ r.risk_6m | pct }}</p>
+    <p class="muted">80% range {{ r.risk_6m_interval_80[0] | pct_range(r.risk_6m_interval_80[1]) }}
       (from 20 bootstrap models)</p>
-    <svg class="rangebar" viewBox="0 0 400 58" role="img" aria-label="Risk with its 80% range and the decision thresholds">
-      <line class="track" x1="20" y1="24" x2="380" y2="24"/>
-      <rect class="range" x="{{ range.lo }}" y="18" width="{{ [range.hi - range.lo, 2] | max }}" height="12" rx="3"/>
-      <circle class="point" cx="{{ range.risk }}" cy="24" r="6"/>
-      <line class="tick" x1="{{ range.t_mid }}" y1="10" x2="{{ range.t_mid }}" y2="38"/>
-      <line class="tick" x1="{{ range.t_high }}" y1="10" x2="{{ range.t_high }}" y2="38"/>
-      <text x="{{ range.t_mid }}" y="52" text-anchor="middle">review</text>
-      <text x="{{ range.t_high }}" y="52" text-anchor="middle">due now</text>
-      <text x="20" y="52">0%</text><text x="380" y="52" text-anchor="end">100%</text>
+    <svg class="rangebar" viewBox="0 0 400 76" role="img"
+         aria-label="Risk {{ r.risk_6m | pct }} with its 80% range; Review threshold {{ (r.thresholds.t_mid * 100) | round | int }}%, Due now threshold {{ (r.thresholds.t_high * 100) | round | int }}%">
+      <line class="track" x1="20" y1="38" x2="380" y2="38"/>
+      <rect class="range" x="{{ range.lo }}" y="30" width="{{ [range.hi - range.lo, 2] | max }}" height="16" rx="4"/>
+      <line class="tick" x1="{{ range.t_mid }}" y1="24" x2="{{ range.t_mid }}" y2="58"/>
+      <line class="tick" x1="{{ range.t_high }}" y1="16" x2="{{ range.t_high }}" y2="52"/>
+      <circle class="point" cx="{{ range.risk }}" cy="38" r="7"/>
+      <text class="tlabel" x="{{ range.t_high }}" y="11" text-anchor="middle">Due now {{ (r.thresholds.t_high * 100) | round | int }}%</text>
+      <text class="tlabel" x="{{ range.t_mid }}" y="72" text-anchor="middle">Review {{ (r.thresholds.t_mid * 100) | round | int }}%</text>
+      <text x="20" y="72">0%</text><text x="380" y="72" text-anchor="end">100%</text>
     </svg>
     <dl class="facts">
       <dt>Survival at 2 months</dt><dd>{{ (r.survival_2m * 100) | round | int }}%</dd>
@@ -49,30 +55,31 @@
       <p class="small muted">{% if doc.source == "recorded" %}The treating doctor's recorded estimate.{% else %}Your estimate.{% endif %}
         All three bars are 6-month mortality risk.</p>
       <svg class="cmp" viewBox="0 0 420 96" role="img"
-        aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
+           aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
         {% for key, label, v in [("doctor", "Doctor", doc.risk), ("model", "TimeToTalk", r.risk_6m), ("combined", "Combined", doc.combined)] %}
         {% set y = loop.index0 * 32 %}
         <text class="lbl" x="0" y="{{ y + 17 }}">{{ label }}</text>
-        <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="3"/>
-        <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="3"/>
+        <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="4"/>
+        <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="4"/>
         <text class="val" x="420" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
         {% endfor %}
       </svg>
       {% if doc.gap_flag %}
-      <p class="flag">This estimate is {{ (doc.gap * 100) | round | int }} points more optimistic than the model.
-        Optimistic estimates are a common reason conversations happen late. Consider reviewing the prognosis
-        with the team.</p>
+      <p class="callout"><strong>Prognostic discordance:</strong> {% if doc.source == "recorded" %}the doctor's estimate{% else %}your estimate{% endif %}
+        is {{ (doc.gap * 100) | round | int }} points more favourable than the model's. Discordant estimates are associated
+        with delayed care-planning conversations. Consider a multidisciplinary review of the prognosis.</p>
       {% endif %}
       <p class="small muted">Combined = average of the doctor's and the model's 6-month risk. On 1,497 held-out
         patients: doctor alone AUC 0.786, model 0.804, together 0.833.</p>
     {% endif %}
     <form class="inline" method="post" action="/patient/{{ p.ref }}/doctor#doctor">
       <input type="hidden" name="csrf" value="{{ s.csrf }}">
-      <label>Your estimate: chance alive in 6 months (%)
-        <input type="number" name="doctor" min="0" max="100" step="1" required
-          value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
-      </label>
-      <button type="submit">Compare</button>
+      <label for="doctor-estimate">Your estimate: chance alive in 6 months (%)</label>
+      <div class="row">
+        <input id="doctor-estimate" type="number" name="doctor" min="0" max="100" step="1" required
+               value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
+        <button type="submit">Compare</button>
+      </div>
     </form>
     <div class="actions">
       {% if p.doctor_surv is not none and doc.source != "recorded" %}
@@ -90,45 +97,53 @@
     </div>
   </section>
 
-  <section class="card">
-    <h2>Estimated survival over the next year</h2>
-    <svg class="curve" viewBox="0 0 {{ curve.w }} {{ curve.h }}" role="img" aria-label="Survival curve">
+  <section class="card wide">
+    <h2>Estimated survival over 12 months</h2>
+    <svg class="curve" viewBox="0 0 {{ curve.w }} {{ curve.h }}" role="img"
+         aria-label="Estimated survival curve over 12 months{% if curve.mark %}; 6 months: {{ curve.mark[2] }}{% endif %}">
       {% for y, lbl in curve.yticks %}
       <line class="grid" x1="{{ curve.x0 }}" y1="{{ y }}" x2="{{ curve.x1 }}" y2="{{ y }}"/>
-      <text x="{{ curve.x0 - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ lbl }}</text>
+      <text x="{{ curve.x0 - 8 }}" y="{{ y + 4 }}" text-anchor="end">{{ lbl }}</text>
       {% endfor %}
+      <line class="axis" x1="{{ curve.x0 }}" y1="{{ curve.y0 }}" x2="{{ curve.x1 }}" y2="{{ curve.y0 }}"/>
       {% for x, d in curve.xticks %}
-      <text x="{{ x }}" y="{{ curve.y0 + 18 }}" text-anchor="middle">{{ d }}d</text>
+      <text x="{{ x }}" y="{{ curve.y0 + 18 }}" text-anchor="middle">{{ (d / 30) | round | int }} mo</text>
       {% endfor %}
+      <text class="axis-label" x="{{ (curve.x0 + curve.x1) / 2 }}" y="{{ curve.h - 4 }}" text-anchor="middle">Months from assessment</text>
+      <text class="axis-label" x="12" y="{{ (curve.y0 + curve.y1) / 2 }}" text-anchor="middle"
+            transform="rotate(-90 12 {{ (curve.y0 + curve.y1) / 2 }})">Probability alive</text>
       <polyline class="line" points="{{ curve.points }}"/>
       {% if curve.mark %}
-      <circle class="point" cx="{{ curve.mark[0] }}" cy="{{ curve.mark[1] }}" r="5"/>
-      <text x="{{ curve.mark[0] + 8 }}" y="{{ curve.mark[1] - 8 }}">6 months: {{ curve.mark[2] }}</text>
+      <line class="mark-line" x1="{{ curve.mark[0] }}" y1="{{ curve.mark[1] }}" x2="{{ curve.mark[0] }}" y2="{{ curve.y0 }}"/>
+      <circle class="point" cx="{{ curve.mark[0] }}" cy="{{ curve.mark[1] }}" r="6"/>
+      <text class="mark-label" x="{{ curve.mark[0] + 10 }}" y="{{ curve.mark[1] - 10 }}">6 months: {{ curve.mark[2] }}</text>
       {% endif %}
     </svg>
-    <p class="small muted">Curve shape from the Cox model, scaled to match the 6-month risk above. An estimate, not a prediction of when.</p>
-  </section>
-
-  <section class="card">
-    <h2>Main factors</h2>
-    <ul class="factors">
-      {% for b in bars %}
-      <li>
-        <span class="fname">{{ b.name }}</span>
-        <svg viewBox="0 0 224 14" class="fbar" role="img" aria-label="{{ 'raises' if b.up else 'lowers' }} risk">
-          <rect class="{{ 'up' if b.up else 'down' }}" x="0" y="1" width="{{ b.width }}" height="12" rx="2"/>
-        </svg>
-        <span class="small {{ 'upt' if b.up else 'downt' }}">{{ "raises risk" if b.up else "lowers risk" }}</span>
-      </li>
-      {% endfor %}
-    </ul>
+    <p class="small muted">Curve shape from the Cox model, scaled to match the 6-month risk. An estimate, not a prediction of when.</p>
   </section>
 </div>
 
+{# c) top factors #}
+<section class="card">
+  <h2>Main factors</h2>
+  <ul class="factors">
+    {% for b in bars %}
+    <li>
+      <span class="fname">{{ b.name }}</span>
+      <svg viewBox="0 0 224 14" class="fbar" role="img" aria-label="{{ 'raises' if b.up else 'lowers' }} risk">
+        <rect class="{{ 'up' if b.up else 'down' }}" x="0" y="1" width="{{ b.width }}" height="12" rx="3"/>
+      </svg>
+      <span class="small {{ 'upt' if b.up else 'downt' }}">{{ "raises risk" if b.up else "lowers risk" }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{# d) prep sheet #}
 <section class="card" id="briefing">
   <h2>Conversation prep sheet</h2>
-  <p class="small muted">Written by IBM Granite running on this LinuxONE server, from the model's output and our
-    care-planning guideline notes. Nothing leaves the server. Can take up to 90 seconds.</p>
+  <p class="small muted">Written by IBM Granite from the model's output and our care-planning guideline notes.
+    Nothing leaves the server.</p>
   <form class="inline" method="post" action="/patient/{{ p.ref }}/briefing#briefing">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
     <input type="hidden" name="doctor" value="{{ doc.field }}">
@@ -138,15 +153,16 @@
       </select>
     </label>
     <button type="submit">Draft prep sheet</button>
+    <span class="note">Generated by IBM Granite on the z17. Typically takes about 2 minutes.</span>
   </form>
   {% if briefing %}
     <p class="sheetmeta">
-      {% if briefing.used_llm %}<span class="badge review">Written by Granite</span>
-      {% else %}<span class="badge judge">Template (Granite unavailable)</span>{% endif %}
+      {% if briefing.used_llm %}<span class="badge ai">Written by Granite</span>
+      {% else %}<span class="badge caution">Template (Granite unavailable)</span>{% endif %}
       <span class="small muted">{{ briefing.language }} · {{ briefing.latency_s }} s</span>
     </p>
     {% for w in briefing.warnings %}<p class="alert" role="alert">{{ w }}</p>{% endfor %}
-    <div class="briefing">{{ briefing.text }}</div>
+    <article class="doc">{{ briefing.text | md }}</article>
     {% if briefing.passages %}
     <details>
       <summary>Guidance used ({{ briefing.passages | length }} passages)</summary>
@@ -160,6 +176,7 @@
   {% endif %}
 </section>
 
+{# e) ask the guidelines #}
 <section class="card" id="why">
   <h2>Ask the guidelines</h2>
   <p class="small muted">A conversation coach: ask how to handle part of the conversation. Granite answers from our
@@ -174,12 +191,12 @@
   </form>
   {% if why %}
     <p class="sheetmeta">
-      {% if why.used_llm %}<span class="badge review">Answered by Granite</span>
-      {% elif why.passages %}<span class="badge judge">Granite unavailable: guidance shown</span>
-      {% else %}<span class="badge none">Not covered by the notes</span>{% endif %}
+      {% if why.used_llm %}<span class="badge ai">Answered by Granite</span>
+      {% elif why.passages %}<span class="badge caution">Granite unavailable: guidance shown</span>
+      {% else %}<span class="badge">Not covered by the notes</span>{% endif %}
     </p>
     {% for w in why.warnings %}<p class="alert" role="alert">{{ w }}</p>{% endfor %}
-    <div class="briefing">{{ why.answer }}</div>
+    <article class="doc answer">{{ why.answer | md }}</article>
     {% if why.passages %}
     <details>
       <summary>Guidance used ({{ why.passages | length }} passages)</summary>

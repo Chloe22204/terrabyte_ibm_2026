@@ -2,8 +2,10 @@
 {% block title %}Sign in{% endblock %}
 {% block content %}
 <section class="login card">
+  <p class="product">Time<span>To</span>Talk</p>
+  <p class="tagline">Timely advance care planning for seriously ill patients</p>
   <h1>Sign in</h1>
-  <p class="muted">Authorised clinical staff only.</p>
+  <p class="muted small">Authorised clinical staff only.</p>
   {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/login" autocomplete="off">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -13,5 +15,7 @@
     <input id="password" name="password" type="password" required maxlength="256" autocomplete="current-password">
     <button type="submit">Sign in</button>
   </form>
+  {% set plat = platform_info() %}
+  <p class="runs">{% if plat.linuxone %}Runs entirely on IBM LinuxONE{% else %}Running on {{ plat.machine }} (not LinuxONE){% endif %}</p>
 </section>
 {% endblock %}

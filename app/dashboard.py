@@ -18,6 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -109,6 +110,87 @@ ORDER = sorted(PATIENTS.values(), key=lambda p: (DECISIONS.index(p["decision"]),
 app = FastAPI(title="TimeToTalk dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")      # autoescaping on for .html
+
+
+# ---------------------------------------------------------------- display-only formatting (no logic changes)
+def pct(v):
+    """Risk as a whole percentage; the extremes read as '>99%' / '<1%' rather than a flat 100% or 0%."""
+    return ">99%" if v >= 0.995 else "<1%" if v < 0.005 else f"{round(v * 100)}%"
+
+
+def pct_range(lo, hi):
+    """80% range; a range that rounds to '100–100%' or '0–0%' is shown as '99–100%' / '0–1%'."""
+    a, b = round(lo * 100), round(hi * 100)
+    if a == b == 100:
+        a = 99
+    elif a == b == 0:
+        b = 1
+    return f"{a}–{b}%"
+
+
+_HEADING = re.compile(r"^(?:#{1,4}\s*)?(?:\*\*)?(\d+\.\s+[^?]{1,60}?)(?:\*\*)?:?$")
+_ITEM = re.compile(r"^(?:[-*•]|\d+[.)])\s+(.*)$")
+
+
+def render_generated(text):
+    """Granite / template text -> HTML. Every line is HTML-escaped FIRST; only then are **bold**,
+    '- ' bullets and short numbered section titles turned into tags, so model output can never inject
+    markup. Section titles keep their number ('1. Why now')."""
+    out, items = [], []
+
+    def flush():
+        if items:
+            out.append("<ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>")
+            items.clear()
+
+    def inline(s):
+        return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", str(escape(s)))
+
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            flush()
+            continue
+        h = _HEADING.match(line)
+        if h and not line.endswith((".", "?")) or line.startswith("#"):
+            flush()
+            title = h.group(1) if h else line.lstrip("#").strip()
+            out.append(f"<h3>{inline(title.strip('* '))}</h3>")
+        elif m := _ITEM.match(line):
+            items.append(inline(m.group(1)))
+        else:
+            flush()
+            out.append(f"<p>{inline(line)}</p>")
+    flush()
+    return Markup("".join(out))
+
+
+Z_MODELS = {"9175": "z17", "9176": "z17", "3931": "z16", "3932": "z16", "8561": "z15", "8562": "z15"}
+
+
+def _z_model():
+    """IBM Z generation from /proc/sysinfo's machine type (s390x only); None if unknown."""
+    try:
+        with open("/proc/sysinfo") as f:
+            m = re.search(r"^Type:\s*(\d+)", f.read(), re.M)
+        return Z_MODELS.get(m.group(1)) if m else None
+    except OSError:
+        return None
+
+
+def platform_info():
+    """Header badge / 'scored on' wording. Claims IBM Z only when the scoring machine really is s390x."""
+    st = system_status()
+    machine = st.get("machine") or "unknown"
+    linuxone = machine == "s390x"
+    z = _z_model() if linuxone and not USE_API else None
+    name = f"IBM {z}" if z else "IBM LinuxONE"
+    return {"linuxone": linuxone, "machine": machine, "name": name,
+            "badge": f"IBM LinuxONE{' ' + z if z else ''} · s390x" if linuxone else f"{machine} · not LinuxONE"}
+
+
+templates.env.filters.update(pct=pct, pct_range=pct_range, md=render_generated)
+templates.env.globals["platform_info"] = platform_info
 
 CSP = ("default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; object-src 'none'; "
        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -383,7 +465,7 @@ def patient_view(request, s, p, briefing=None, language="English", why=None, que
     risk = result["risk_6m"]
     ctx = {"s": s, "p": p, "r": result, "live": live, "mode": "LinuxONE API" if USE_API else "local scorer",
            "info": DECISION_INFO[result["decision"]],
-           "curve": curve_svg(result["survival_curve"]["days"], result["survival_curve"]["survival"]),
+           "curve": curve_svg(result["survival_curve"]["days"], result["survival_curve"]["survival"], w=900, h=300, pad=56),
            "bars": factor_bars(result["top_factors"]),
            "range": {"lo": 20 + 360 * lo, "hi": 20 + 360 * hi, "risk": 20 + 360 * risk,
                      "t_mid": 20 + 360 * THRESHOLDS["t_mid"], "t_high": 20 + 360 * THRESHOLDS["t_high"]},

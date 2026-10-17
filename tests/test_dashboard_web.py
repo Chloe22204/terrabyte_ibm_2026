@@ -230,7 +230,7 @@ def test_pagination_covers_every_patient(doctor):
 @needs_raw
 def test_patient_page_scores_live(doctor, some_ref):
     html = doctor.get(f"/patient/{some_ref}").text
-    assert "Scored live: local scorer" in html and "<polyline" in html
+    assert "Scored live" in html and "<polyline" in html     # "on IBM z17" on LinuxONE, ": local scorer" elsewhere
 
 
 def test_patient_page_falls_back_without_raw_record(doctor, some_ref, monkeypatch):

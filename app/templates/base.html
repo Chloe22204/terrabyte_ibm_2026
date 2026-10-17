@@ -10,8 +10,10 @@
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/">TimeToTalk</a>
-  <span class="tag"><strong>Decision support, not a prediction. Your judgement leads.</strong></span>
+  <a class="brand" href="/">Time<span>To</span>Talk</a>
+  {% set plat = platform_info() %}
+  <span class="platform{% if not plat.linuxone %} off{% endif %}">{{ plat.badge }}</span>
+  <span class="tag">Decision support, not a prediction. Your judgement leads.</span>
   {% if s %}
   <div class="who">
     <span>{{ s.user }} · {{ s.role }}</span>
@@ -26,8 +28,8 @@
 {% block content %}{% endblock %}
 </main>
 <footer>
-  For doctors only. The model prompts a conversation and never decides; it is never shown to patients.
-  Patient references are pseudonyms. Every view is audit-logged.
+  <strong>Clinical decision support only. Final decisions rest with the treating doctor.</strong>
+  Never shown to patients. Patient references are pseudonyms. Every view is audit-logged.
 </footer>
 </body>
 </html>

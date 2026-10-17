@@ -1,9 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Worklist{% endblock %}
 {% block content %}
+{% set plat = platform_info() %}
 <div class="pagehead">
-  <h1>Patient worklist</h1>
-  <span class="mode">Scoring: {{ mode }}</span>
+  <div>
+    <h1>Patient worklist</h1>
+    <p class="muted">Sorted by priority, then risk. Click a patient to open their summary.</p>
+  </div>
+  {% if plat.linuxone %}<span class="mode z">Scored on {{ plat.name }}</span>
+  {% else %}<span class="mode">Scoring: {{ mode }}</span>{% endif %}
 </div>
 
 <section class="card system" aria-labelledby="sys">
@@ -17,7 +22,6 @@
     <div><dt>Second-opinion model</dt><dd>{{ "loaded" if system.second_opinion else "not loaded" }}</dd></div>
     <div><dt>Granite</dt><dd>{{ "connected" if system.granite else "not connected" }}</dd></div>
   </dl>
-  <p><strong>{% if system.linuxone %}All inference runs on this LinuxONE VM.{% else %}Running on {{ system.machine }}, not LinuxONE.{% endif %}</strong></p>
   {% endif %}
   <form class="inline" method="post" action="/benchmark">
     <input type="hidden" name="csrf" value="{{ s.csrf }}">
@@ -28,6 +32,9 @@
         <span class="muted">({{ "%.2f" | format(bench.ms) }} ms each, n = {{ bench.n }}, on {{ bench.where }})</span></span>{% endif %}
     {% endif %}
   </form>
+  {% if not system.error %}
+  <p class="where"><strong>{% if system.linuxone %}All inference runs on this LinuxONE VM.{% else %}Running on {{ system.machine }}, not LinuxONE.{% endif %}</strong></p>
+  {% endif %}
 </section>
 
 <div class="summary">
@@ -36,8 +43,9 @@
     <span class="num">{{ counts[d] }}</span><span class="lbl">{{ d }}</span>
   </a>
   {% endfor %}
-  <a class="stat gap{% if gap %} active{% endif %}" href="/?gap=1">
-    <span class="num">{{ n_gap }}</span><span class="lbl">Doctor estimate much more optimistic</span>
+  <a class="stat disc{% if gap %} active{% endif %}" href="/?gap=1">
+    <span class="num">{{ n_gap }}</span><span class="lbl">Prognostic discordance</span>
+    <span class="sub">Doctor's estimate ≥{{ (gap_threshold * 100) | round | int }} points more favourable than the model's</span>
   </a>
 </div>
 
@@ -54,32 +62,32 @@
       {% for g in dz_groups %}<option value="{{ g }}"{% if g == dz %} selected{% endif %}>{{ g }}</option>{% endfor %}
     </select>
   </label>
-  <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Optimism gap only</label>
+  <label class="check"><input type="checkbox" name="gap" value="1"{% if gap %} checked{% endif %}> Prognostic discordance only</label>
   <button type="submit">Apply</button>
   <a href="/">Clear</a>
 </form>
 
-<p class="muted">{{ n }} patients · sorted by priority, then risk.
-  "Optimism gap" = the doctor's recorded 6-month survival estimate is at least {{ (gap_threshold * 100) | round | int }} points higher than the model's.</p>
+<p class="note">{{ n }} patients. Prognostic discordance: the doctor's recorded 6-month survival estimate is at least
+  {{ (gap_threshold * 100) | round | int }} percentage points higher than the model's.</p>
 
 <div class="tablewrap">
 <table>
   <thead><tr>
-    <th>Patient ref</th><th>Age</th><th>Sex</th><th>Diagnosis</th>
-    <th class="num">6-month risk</th><th>80% range</th><th>Decision</th><th>Doctor vs model</th>
+    <th>Patient</th><th class="num">Age</th><th>Sex</th><th>Diagnosis</th>
+    <th class="num">6-month risk</th><th class="num">80% range</th><th>Decision</th><th>Doctor vs model</th>
   </tr></thead>
   <tbody>
   {% for p in rows %}
   <tr>
-    <td class="mono"><a href="/patient/{{ p.ref }}">{{ p.ref }}</a></td>
-    <td>{{ p.age }}</td>
+    <td><a class="ref" href="/patient/{{ p.ref }}" title="Open patient {{ p.ref }}">#{{ p.ref[:6] }}</a></td>
+    <td class="num">{{ p.age }}</td>
     <td>{{ p.sex }}</td>
     <td>{{ p.dz }}</td>
-    <td class="num"><strong>{{ (p.risk * 100) | round | int }}%</strong></td>
-    <td class="muted">{{ (p.lo * 100) | round | int }}–{{ (p.hi * 100) | round | int }}%</td>
+    <td class="num"><strong>{{ p.risk | pct }}</strong></td>
+    <td class="num muted">{{ p.lo | pct_range(p.hi) }}</td>
     <td><span class="badge {{ info[p.decision][0] }}">{{ p.decision }}</span></td>
     <td>
-      {% if p.gap_flag %}<span class="flag">Doctor +{{ (p.gap * 100) | round | int }} pts more optimistic</span>
+      {% if p.gap_flag %}<span class="flag">Discordant: doctor +{{ (p.gap * 100) | round | int }} pts</span>
       {% elif p.doctor_surv is none %}<span class="muted">no estimate</span>
       {% else %}<span class="muted">consistent</span>{% endif %}
     </td>
@@ -95,7 +103,7 @@
 <nav class="pager">
   {% set q = {"decision": decision, "dz": dz, "gap": "1" if gap else ""} %}
   {% if page > 1 %}<a href="/?{{ q | urlencode }}&page={{ page - 1 }}">← Previous</a>{% endif %}
-  <span>Page {{ page }} of {{ pages }}</span>
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
   {% if page < pages %}<a href="/?{{ q | urlencode }}&page={{ page + 1 }}">Next →</a>{% endif %}
 </nav>
 {% endif %}
