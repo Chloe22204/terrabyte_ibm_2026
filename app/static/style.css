@@ -92,6 +92,7 @@ button { font: inherit; font-weight: 600; background: var(--accent); color: var(
 button:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 button.secondary { background: transparent; color: var(--text); border-color: var(--rule-strong); font-weight: 500; }
 button.secondary:hover { background: var(--surface-2); border-color: var(--muted); }
+button:disabled, button:disabled:hover { opacity: 0.5; cursor: not-allowed; background: var(--accent); }
 button.link { background: none; border: 0; color: var(--accent); padding: 0; margin: 0; font-weight: 400;
   text-decoration: underline; text-underline-offset: 3px; }
 .alert { background: var(--review-bg); color: var(--text); border-radius: var(--r-sm); padding: var(--s2) var(--s3); }
@@ -173,6 +174,19 @@ tbody tr:last-child td { border-bottom: 0; }
 .decision p { margin: 0; color: var(--text); }
 .decision .badge { font-size: 1.3rem; font-weight: 700; gap: 10px; }
 .decision .badge::before { width: 10px; height: 10px; }
+/* the answer in one strip: decision on the left, risk + second opinion on the right */
+.summary-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: var(--s3) var(--s5); padding: var(--s4); }
+.ss-main p { margin-top: 6px; }
+.ss-facts { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); margin: 0; }
+.ss-facts dt { font-size: 0.8rem; color: var(--muted); margin-bottom: 2px; }
+.ss-facts dd { margin: 0; }
+.ss-big { font-size: 2.4rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; color: var(--text); }
+.ss-range { font-size: 0.875rem; color: var(--muted); white-space: nowrap; }
+.agrees { color: var(--none); }
+.disagree { color: var(--due); }
+@media (max-width: 860px) { .summary-strip { grid-template-columns: 1fr; } }
+
 .big { font-size: 3.2rem; font-weight: 700; margin: 0; line-height: 1; letter-spacing: -0.01em; }
 .facts { display: grid; grid-template-columns: 1fr auto; gap: var(--s1) var(--s3); margin: var(--s4) 0 0;
   padding-top: var(--s3); border-top: 1px solid var(--rule); font-size: 0.9rem; }
@@ -205,12 +219,17 @@ svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
 .cmp .combined { fill: var(--combined); }
 .actions { display: flex; gap: var(--s3); margin-top: var(--s2); font-size: 0.9rem; }
 .actions form { margin: 0; }
-#doctor form.inline { display: block; margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--rule); }
+.doctor-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--s5); align-items: start; }
+.doctor-side { border-left: 1px solid var(--rule); padding-left: var(--s5); }
+.doctor-side .small { margin-top: var(--s3); }
+@media (max-width: 860px) { .doctor-body { grid-template-columns: 1fr; } .doctor-side { border-left: 0; padding-left: 0; } }
+#doctor form.inline { display: block; }
+#doctor form.inline label { margin-top: 0; }
 #doctor .row { display: flex; gap: var(--s2); align-items: stretch; }
 #doctor .row input { width: 6.5em; }
 #doctor .row button { margin: 0; }
 
-.factors { list-style: none; margin: 0; padding: 0; }
+.factors { list-style: none; margin: 0; padding: 0; max-width: 820px; }
 .factors li { display: grid; grid-template-columns: minmax(0, 1fr) 110px 92px; align-items: center;
   gap: var(--s3); padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 0.925rem; }
 .factors li:first-child { padding-top: 0; }
@@ -321,13 +340,37 @@ button.shimmer:hover::after { animation: shimmer-again 1s ease-in-out both; }
   -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%);
   mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%); }
 
+/* worklist risk cell: number + a small bar with the 80% range band and the risk dot in the tier colour */
+.riskcell { display: inline-flex; align-items: center; gap: 10px; }
+.riskcell strong { min-width: 3.2em; text-align: right; }
+.rbar { width: 96px; height: 10px; flex: none; }
+.rbar .t { fill: var(--rule); }
+.rbar .r { fill: var(--tier-dot); opacity: 0.28; }
+.rbar .d { fill: var(--tier-dot); }
+.th-sub { font-weight: 400; color: var(--muted); opacity: 0.85; }
+
+/* Granite is working: shown while a background job runs; the page refreshes itself every 3 s */
+.working { margin-top: var(--s4); padding: var(--s3) var(--s4); background: var(--accent-soft); border-radius: var(--r); }
+.working p { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--s2); }
+.working p.small { display: block; margin: 0; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent;
+  animation: spin 0.8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress { display: block; width: 100%; height: 6px; margin-bottom: var(--s2); }
+.progress .track { fill: var(--surface); }
+.progress .fill { fill: var(--accent); }
+
+/* pages re-rendered after a button press (and while Granite works) skip the entrance animations */
+.settled .decision, .settled .grid > .card, .settled #briefing, .settled #why,
+.settled button.shimmer::after { animation: none; }
+
 /* Filter menus (after Magic UI): Border Beam traces the panel edge once on open,
    options arrive like an Animated List, and the chevron turns. */
 @property --beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .filters { align-items: flex-end; }
 .field { display: flex; flex-direction: column; gap: var(--s1); }
 .field-label { font-size: 0.85rem; color: var(--muted); }
-.menu { position: relative; }
+.menu { position: relative; margin: 0; }
 .menu summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
   min-width: 230px; padding: 7px 12px; background: var(--surface); border: 1px solid var(--rule-strong);
   border-radius: var(--r-sm); cursor: pointer; font-size: 0.925rem; user-select: none;

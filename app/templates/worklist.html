@@ -48,8 +48,8 @@
   </a>
   {% endfor %}
   <a class="stat disc{% if gap %} active{% endif %}" href="/?gap=1">
-    <span class="num">{{ ticker(n_gap) }}</span><span class="lbl">Prognostic discordance</span>
-    <span class="sub">Doctor's estimate ≥{{ (gap_threshold * 100) | round | int }} points more favourable than the model's</span>
+    <span class="num">{{ ticker(n_gap) }}</span><span class="lbl">Doctors and AI differ</span>
+    <span class="sub">Doctor's estimate ≥{{ (gap_threshold * 100) | round | int }} points more favourable than the AI's</span>
   </a>
 </div>
 
@@ -96,14 +96,14 @@
   <a class="clear" href="/">Clear</a>
 </div>
 
-<p class="note">{{ n }} patients. Prognostic discordance: the doctor's recorded 6-month survival estimate is at least
-  {{ (gap_threshold * 100) | round | int }} percentage points higher than the model's.</p>
+<p class="note">{{ n }} patients. Doctors and AI differ: the doctor's recorded 6-month survival estimate is at least
+  {{ (gap_threshold * 100) | round | int }} percentage points higher than the AI's.</p>
 
 <div class="tablewrap">
 <table>
   <thead><tr>
     <th>Patient</th><th class="num">Age</th><th>Sex</th><th>Diagnosis</th>
-    <th class="num">6-month risk</th><th class="num">80% range</th><th>Decision</th><th>Doctor vs model</th>
+    <th>6-month risk <span class="th-sub">with 80% range</span></th>{% if not decision %}<th>Decision</th>{% endif %}<th>Doctor vs AI</th>
   </tr></thead>
   <tbody>
   {% for p in rows %}
@@ -112,17 +112,22 @@
     <td class="num">{{ p.age }}</td>
     <td>{{ p.sex }}</td>
     <td>{{ p.dz }}</td>
-    <td class="num"><strong>{{ p.risk | pct }}</strong></td>
-    <td class="num muted">{{ p.lo | pct_range(p.hi) }}</td>
-    <td><span class="badge {{ info[p.decision][0] }}">{{ p.decision }}</span></td>
     <td>
-      {% if p.gap_flag %}<span class="flag">Discordant: doctor +{{ (p.gap * 100) | round | int }} pts</span>
-      {% elif p.doctor_surv is none %}<span class="muted">no estimate</span>
-      {% else %}<span class="muted">consistent</span>{% endif %}
+      <span class="riskcell">
+        <strong>{{ p.risk | pct }}</strong>
+        <svg class="rbar {{ info[p.decision][0] }}" viewBox="-4 0 108 10" role="img"
+             aria-label="80% range {{ p.lo | pct_range(p.hi) }}"><title>80% range {{ p.lo | pct_range(p.hi) }}</title>
+          <rect class="t" x="0" y="4" width="100" height="2" rx="1"/>
+          <rect class="r" x="{{ p.lo * 100 }}" y="1.5" width="{{ [(p.hi - p.lo) * 100, 2] | max }}" height="7" rx="3.5"/>
+          <circle class="d" cx="{{ p.risk * 100 }}" cy="5" r="3"/>
+        </svg>
+      </span>
     </td>
+    {% if not decision %}<td><span class="badge {{ info[p.decision][0] }}">{{ p.decision }}</span></td>{% endif %}
+    <td>{% if p.gap_flag %}<span class="flag">Differ: doctor +{{ (p.gap * 100) | round | int }} pts</span>{% endif %}</td>
   </tr>
   {% else %}
-  <tr><td colspan="8">No patients match these filters.</td></tr>
+  <tr><td colspan="7">No patients match these filters.</td></tr>
   {% endfor %}
   </tbody>
 </table>

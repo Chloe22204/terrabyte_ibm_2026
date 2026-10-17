@@ -1,7 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Patient {{ p.ref }}{% endblock %}
+{% block body_class %}{% if settled %}settled{% endif %}{% endblock %}
+{% block head %}{% if pending %}
+<meta http-equiv="refresh" content="3;url={{ pending.url }}#{{ pending.kind }}">{% endif %}{% endblock %}
+{% macro working(what) -%}
+  <div class="working" role="status">
+    <p><span class="spinner" aria-hidden="true"></span><strong>Granite is {{ what }}…</strong>
+      <span class="muted">{{ pending.elapsed }} s</span></p>
+    <svg class="progress" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+      <rect class="track" width="100" height="4" rx="2"/><rect class="fill" width="{{ pending.progress }}" height="4" rx="2"/>
+    </svg>
+    <p class="small muted">Running on this server. Typically about {{ "2 minutes" if pending.kind == "briefing" else "a minute" }};
+      this page updates by itself.</p>
+  </div>
+{%- endmacro %}
 {% block content %}
 {% set plat = platform_info() %}
+{% set lo, hi = r.risk_6m_interval_80 %}
 <a class="back" href="/">← Worklist</a>
 
 <div class="pagehead">
@@ -14,19 +29,31 @@
   {% else %}<span class="mode">Precomputed result (live scoring unavailable)</span>{% endif %}
 </div>
 
-{# a) decision banner #}
-<section class="decision {{ info[0] }}">
-  <span class="badge {{ info[0] }}">{{ r.decision }}</span>
-  <p>{{ info[1] }}</p>
+{# a) the answer in one strip: decision, risk with its range, second opinion #}
+<section class="decision summary-strip {{ info[0] }}" aria-label="Summary">
+  <div class="ss-main">
+    <span class="badge {{ info[0] }}">{{ r.decision }}</span>
+    <p>{{ info[1] }}</p>
+  </div>
+  <dl class="ss-facts">
+    <div class="ss-risk">
+      <dt>6-month mortality risk</dt>
+      <dd><span class="ss-big">{{ r.risk_6m | pct }}</span> <span class="ss-range">80% range {{ lo | pct_range(hi) }}</span></dd>
+    </div>
+    <div>
+      <dt>Second opinion (XGBoost)</dt>
+      <dd>{% if r.second_opinion_risk_6m is none %}<span class="muted">not available</span>
+        {% elif r.models_disagree %}<strong class="disagree">Disagrees</strong> · {{ r.second_opinion_risk_6m | pct }}
+        {% else %}<strong class="agrees">Agrees</strong> · {{ r.second_opinion_risk_6m | pct }}{% endif %}</dd>
+    </div>
+  </dl>
 </section>
 
-{# b) risk, doctor + model, survival curve, main factors #}
+{# b) risk in context, survival curve, doctor + AI, main factors #}
 <div class="grid">
   <section class="card">
-    <h2>6-month mortality risk</h2>
-    <p class="big">{{ r.risk_6m | pct }}</p>
-    <p class="muted">80% range {{ r.risk_6m_interval_80[0] | pct_range(r.risk_6m_interval_80[1]) }}
-      (from 20 bootstrap models)</p>
+    <h2>Risk and decision thresholds</h2>
+    <p class="small muted">The dot is this patient's risk; the shaded band is the 80% range from 20 bootstrap models.</p>
     <svg class="rangebar" viewBox="0 0 400 76" role="img"
          aria-label="Risk {{ r.risk_6m | pct }} with its 80% range; Review threshold {{ (r.thresholds.t_mid * 100) | round | int }}%, Due now threshold {{ (r.thresholds.t_high * 100) | round | int }}%">
       <line class="track" x1="20" y1="38" x2="380" y2="38"/>
@@ -41,60 +68,7 @@
     <dl class="facts">
       <dt>Survival at 2 months</dt><dd>{{ (r.survival_2m * 100) | round | int }}%</dd>
       <dt>Survival at 6 months</dt><dd>{{ (r.survival_6m * 100) | round | int }}%</dd>
-      <dt>Second opinion (XGBoost)</dt>
-      <dd>{% if r.second_opinion_risk_6m is none %}not available{% else %}{{ (r.second_opinion_risk_6m * 100) | round | int }}% risk{% if r.models_disagree %} · <strong>models disagree</strong>{% endif %}{% endif %}</dd>
     </dl>
-  </section>
-
-  <section class="card{% if doc.gap_flag %} warn{% endif %}" id="doctor">
-    <h2>Doctor's estimate + TimeToTalk</h2>
-    {% if doc.surv is none %}
-      <p class="muted">{% if doc.source == "none" %}Estimate cleared.{% else %}No doctor's survival estimate recorded for this patient.{% endif %}
-        Enter yours below to compare it with the model.</p>
-    {% else %}
-      <p class="small muted">{% if doc.source == "recorded" %}The treating doctor's recorded estimate.{% else %}Your estimate.{% endif %}
-        All three bars are 6-month mortality risk.</p>
-      <svg class="cmp" viewBox="0 0 440 96" role="img"
-           aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
-        {% for key, label, v in [("doctor", "Doctor", doc.risk), ("model", "TimeToTalk", r.risk_6m), ("combined", "Combined", doc.combined)] %}
-        {% set y = loop.index0 * 32 %}
-        <text class="lbl" x="0" y="{{ y + 17 }}">{{ label }}</text>
-        <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="4"/>
-        <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="4"/>
-        <text class="val" x="440" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
-        {% endfor %}
-      </svg>
-      {% if doc.gap_flag %}
-      <p class="callout"><strong>Prognostic discordance:</strong> {% if doc.source == "recorded" %}the doctor's estimate{% else %}your estimate{% endif %}
-        is {{ (doc.gap * 100) | round | int }} points more favourable than the model's. Discordant estimates are associated
-        with delayed care-planning conversations. Consider a multidisciplinary review of the prognosis.</p>
-      {% endif %}
-      <p class="small muted">Combined = average of the doctor's and the model's 6-month risk. On 1,497 held-out
-        patients: doctor alone AUC 0.786, model 0.804, together 0.833.</p>
-    {% endif %}
-    <form class="inline" method="post" action="/patient/{{ p.ref }}/doctor#doctor">
-      <input type="hidden" name="csrf" value="{{ s.csrf }}">
-      <label for="doctor-estimate">Your estimate: chance alive in 6 months (%)</label>
-      <div class="row">
-        <input id="doctor-estimate" type="number" name="doctor" min="0" max="100" step="1" required
-               value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
-        <button class="secondary" type="submit">Compare</button>
-      </div>
-    </form>
-    <div class="actions">
-      {% if p.doctor_surv is not none and doc.source != "recorded" %}
-      <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
-        <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="recorded">
-        <button class="link" type="submit">Use recorded estimate</button>
-      </form>
-      {% endif %}
-      {% if doc.surv is not none %}
-      <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
-        <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="none">
-        <button class="link" type="submit">Clear</button>
-      </form>
-      {% endif %}
-    </div>
   </section>
 
   <section class="card">
@@ -122,8 +96,67 @@
     <p class="small muted">Curve shape from the Cox model, scaled to match the 6-month risk. An estimate, not a prediction of when.</p>
   </section>
 
+  <section class="card wide doctor-card{% if doc.gap_flag %} warn{% endif %}" id="doctor">
+    <h2>Doctor's estimate + TimeToTalk</h2>
+    <div class="doctor-body">
+      <div>
+        {% if doc.surv is none %}
+          <p class="muted">{% if doc.source == "none" %}Estimate cleared.{% else %}No doctor's survival estimate recorded for this patient.{% endif %}
+            Enter yours to compare it with the AI.</p>
+        {% else %}
+          <p class="small muted">{% if doc.source == "recorded" %}The treating doctor's recorded estimate.{% else %}Your estimate.{% endif %}
+            All three bars are 6-month mortality risk.</p>
+          <svg class="cmp" viewBox="0 0 440 96" role="img"
+               aria-label="Doctor {{ (doc.risk * 100) | round | int }}%, TimeToTalk {{ (r.risk_6m * 100) | round | int }}%, combined {{ (doc.combined * 100) | round | int }}% 6-month mortality risk">
+            {% for key, label, v in [("doctor", "Doctor", doc.risk), ("model", "TimeToTalk", r.risk_6m), ("combined", "Combined", doc.combined)] %}
+            {% set y = loop.index0 * 32 %}
+            <text class="lbl" x="0" y="{{ y + 17 }}">{{ label }}</text>
+            <rect class="track" x="84" y="{{ y + 5 }}" width="300" height="16" rx="4"/>
+            <rect class="{{ key }}" x="84" y="{{ y + 5 }}" width="{{ doc.bars[key] }}" height="16" rx="4"/>
+            <text class="val" x="440" y="{{ y + 17 }}" text-anchor="end">{{ (v * 100) | round | int }}%</text>
+            {% endfor %}
+          </svg>
+          {% if doc.gap_flag %}
+          <p class="callout"><strong>Doctor and AI differ:</strong> {% if doc.source == "recorded" %}the doctor's estimate{% else %}your estimate{% endif %}
+            is {{ (doc.gap * 100) | round | int }} points more favourable than the AI's. When the two differ this much, the
+            care-planning conversation is often delayed. Consider a multidisciplinary review of the prognosis.</p>
+          {% endif %}
+        {% endif %}
+      </div>
+      <div class="doctor-side">
+        <form class="inline" method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+          <input type="hidden" name="csrf" value="{{ s.csrf }}">
+          <label for="doctor-estimate">Your estimate: chance alive in 6 months (%)</label>
+          <div class="row">
+            <input id="doctor-estimate" type="number" name="doctor" min="0" max="100" step="1" required
+                   value="{% if doc.surv is not none %}{{ (doc.surv * 100) | round | int }}{% endif %}">
+            <button class="secondary" type="submit">Compare</button>
+          </div>
+        </form>
+        <div class="actions">
+          {% if p.doctor_surv is not none and doc.source != "recorded" %}
+          <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+            <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="recorded">
+            <button class="link" type="submit">Use recorded estimate</button>
+          </form>
+          {% endif %}
+          {% if doc.surv is not none %}
+          <form method="post" action="/patient/{{ p.ref }}/doctor#doctor">
+            <input type="hidden" name="csrf" value="{{ s.csrf }}"><input type="hidden" name="doctor" value="none">
+            <button class="link" type="submit">Clear</button>
+          </form>
+          {% endif %}
+        </div>
+        {% if doc.surv is not none %}
+        <p class="small muted">Combined = average of the doctor's and the AI's 6-month risk. On 1,497 held-out
+          patients: doctor alone AUC 0.786, model 0.804, together 0.833.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
   {# c) top factors #}
-  <section class="card">
+  <section class="card wide">
     <h2>Main factors</h2>
     <ul class="factors">
       {% for b in bars %}
@@ -152,9 +185,11 @@
         {% for l in languages %}<option{% if l == language %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select>
     </label>
-    <button class="shimmer" type="submit">Draft prep sheet</button>
+    <button class="shimmer" type="submit"{% if pending %} disabled{% endif %}>Draft prep sheet</button>
     <span class="note">Generated by IBM Granite on the z17. Typically takes about 2 minutes.</span>
   </form>
+  {% if pending and pending.kind == "briefing" %}{{ working("writing the prep sheet") }}{% endif %}
+  {% if job_error == "briefing" %}<p class="alert" role="alert">The prep sheet couldn't be produced. Please try again.</p>{% endif %}
   {% if briefing %}
     <p class="sheetmeta">
       {% if briefing.used_llm %}<span class="badge ai">Written by Granite</span>
@@ -187,8 +222,10 @@
     <label for="question">Question</label>
     <textarea id="question" name="question" required maxlength="{{ max_question }}" rows="2"
       placeholder="e.g. The family wants everything done. How do I respond?">{{ question }}</textarea>
-    <button type="submit">Ask</button>
+    <button type="submit"{% if pending %} disabled{% endif %}>Ask</button>
   </form>
+  {% if pending and pending.kind == "why" %}{{ working("looking through the guidelines") }}{% endif %}
+  {% if job_error == "why" %}<p class="alert" role="alert">The answer couldn't be produced. Please try again.</p>{% endif %}
   {% if why %}
     <p class="sheetmeta">
       {% if why.used_llm %}<span class="badge ai">Answered by Granite</span>

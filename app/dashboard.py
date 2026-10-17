@@ -10,7 +10,7 @@ Scoring is local by default (same scoring.py the API uses). Set TTT_USE_API=1 wi
 TTT_API_URL and TTT_API_TOKEN to score through the TimeToTalk API on LinuxONE instead.
 See app/README.md for the security controls.
 """
-import csv, json, os, platform, re, secrets, sys, time, urllib.request
+import csv, json, os, platform, re, secrets, sys, threading, time, urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -457,7 +457,54 @@ def current_result(p, user):
     return (result, True) if result is not None else (fallback_result(p), False)
 
 
-def patient_view(request, s, p, briefing=None, language="English", why=None, question="", doctor="recorded"):
+# ---------------------------------------------------------------- Granite jobs
+# A prep sheet takes ~2 minutes on 3 vCPUs. With no JavaScript the page can't poll, so the request starts the
+# work in a background thread and the page refreshes itself (<meta http-equiv="refresh">, not blocked by the CSP)
+# until it's ready. Fast answers (template fallback, tests) still come back in the same request.
+JOB_WAIT_S = 1.5
+JOB_TTL_S = 15 * 60
+TYPICAL_S = {"briefing": 120, "why": 45}
+jobs, jobs_lock = {}, threading.Lock()
+
+
+def start_job(user, ref, kind, work, **params):
+    now = time.time()
+    with jobs_lock:
+        for old in [k for k, j in jobs.items() if now - j["started"] > JOB_TTL_S]:
+            del jobs[old]
+        job = {"id": secrets.token_urlsafe(16), "user": user, "ref": ref, "kind": kind, "started": now,
+               "done": threading.Event(), "out": None, **params}
+        jobs[job["id"]] = job
+
+    def run():
+        try:
+            job["out"] = work()
+        except Exception as e:                       # shown as a plain message; details only in the audit log
+            audit.write("server_error", path=f"job:{kind}", error=type(e).__name__)
+        finally:
+            job["done"].set()
+    threading.Thread(target=run, daemon=True).start()
+    job["done"].wait(JOB_WAIT_S)
+    return job
+
+
+def job_view(request, s, p, job):
+    kw = {"doctor": job["doctor"], "settled": True}
+    key = "language" if job["kind"] == "briefing" else "question"
+    kw[key] = job[key]
+    if not job["done"].is_set():
+        elapsed = int(time.time() - job["started"])
+        kw["pending"] = {"kind": job["kind"], "elapsed": elapsed, "url": f"/patient/{p['ref']}/job/{job['id']}?t={elapsed}",  # changing URL: a #-only change wouldn't reload
+                         "progress": min(95, 100 * elapsed / TYPICAL_S[job["kind"]])}
+    elif job["out"] is None:
+        kw["job_error"] = job["kind"]
+    else:
+        kw[job["kind"]] = job["out"]
+    return patient_view(request, s, p, **kw)
+
+
+def patient_view(request, s, p, briefing=None, language="English", why=None, question="", doctor="recorded",
+                 pending=None, job_error=None, settled=False):
     t0 = time.perf_counter()
     result, live = current_result(p, s["user"])
     score_ms = (time.perf_counter() - t0) * 1000
@@ -471,7 +518,8 @@ def patient_view(request, s, p, briefing=None, language="English", why=None, que
                      "t_mid": 20 + 360 * THRESHOLDS["t_mid"], "t_high": 20 + 360 * THRESHOLDS["t_high"]},
            "languages": LANGUAGES, "language": language, "briefing": briefing,
            "why": why, "question": question, "max_question": MAX_QUESTION,
-           "doc": doctor_view(p, risk, doctor), "score_ms": score_ms}
+           "doc": doctor_view(p, risk, doctor), "score_ms": score_ms,
+           "pending": pending, "job_error": job_error, "settled": settled}
     return templates.TemplateResponse(request, "patient.html", ctx)
 
 
@@ -586,7 +634,7 @@ def doctor_estimate(request: Request, ref: str, csrf: str = Form(...), doctor: s
     doctor = doctor_choice(doctor)
     audit.write("doctor_estimate", user=s["user"], patient=ref,       # never the estimate itself
                 source="yours" if doctor.isdigit() else doctor)
-    return patient_view(request, s, p, doctor=doctor)
+    return patient_view(request, s, p, doctor=doctor, settled=True)
 
 
 @app.post("/patient/{ref}/briefing", response_class=HTMLResponse)
@@ -599,10 +647,14 @@ def briefing(request: Request, ref: str, csrf: str = Form(...), language: str = 
     if language not in LANGUAGES:
         raise HTTPException(404)
     result, _ = current_result(p, s["user"])
-    sheet = make_sheet(p, s["user"], LANGUAGE_KEYS[language], result)
-    audit.write("briefing_requested", user=s["user"], patient=ref, language=language,   # never the text
-                used_llm=sheet["used_llm"], warnings=len(sheet["warnings"]), latency_s=sheet["latency_s"])
-    return patient_view(request, s, p, briefing=sheet, language=language, doctor=doctor)
+    user = s["user"]
+
+    def work():
+        sheet = make_sheet(p, user, LANGUAGE_KEYS[language], result)
+        audit.write("briefing_requested", user=user, patient=ref, language=language,   # never the text
+                    used_llm=sheet["used_llm"], warnings=len(sheet["warnings"]), latency_s=sheet["latency_s"])
+        return sheet
+    return job_view(request, s, p, start_job(user, ref, "briefing", work, language=language, doctor=doctor))
 
 
 @app.post("/patient/{ref}/why", response_class=HTMLResponse)
@@ -616,9 +668,24 @@ def why(request: Request, ref: str, csrf: str = Form(...), question: str = Form(
     if not question:
         raise HTTPException(404)
     result, _ = current_result(p, s["user"])
-    out = ask(p, s["user"], question, result)
-    audit.write("ask_why", user=s["user"], patient=ref, used_llm=out["used_llm"])   # never the question text
-    return patient_view(request, s, p, why=out, question=question, doctor=doctor)
+    user = s["user"]
+
+    def work():
+        out = ask(p, user, question, result)
+        audit.write("ask_why", user=user, patient=ref, used_llm=out["used_llm"])   # never the question text
+        return out
+    return job_view(request, s, p, start_job(user, ref, "why", work, question=question, doctor=doctor))
+
+
+@app.get("/patient/{ref}/job/{job_id}", response_class=HTMLResponse)
+def job_status(request: Request, ref: str, job_id: str):
+    """Where a pending prep sheet / answer refreshes to. Only the user who started the job can see it."""
+    s = session(request)
+    p = valid_patient(ref)
+    job = jobs.get(job_id) if re.fullmatch(r"[A-Za-z0-9_-]{16,32}", job_id) else None
+    if job is None or job["user"] != s["user"] or job["ref"] != ref:
+        raise HTTPException(404)
+    return job_view(request, s, p, job)
 
 
 @app.get("/audit", response_class=HTMLResponse)
