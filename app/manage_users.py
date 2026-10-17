@@ -2,7 +2,7 @@
 Add, remove or list dashboard users. Passwords are typed at a hidden prompt and stored only as
 scrypt hashes in app/users.json (git-ignored).
 
-  python app/manage_users.py add dr_tan --role clinician
+  python app/manage_users.py add dr_tan --role doctor
   python app/manage_users.py add audit1 --role auditor
   python app/manage_users.py disable dr_tan
   python app/manage_users.py remove dr_tan
@@ -19,7 +19,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("action", choices=["add", "remove", "disable", "list"])
     p.add_argument("username", nargs="?")
-    p.add_argument("--role", choices=ROLES, default="clinician")
+    p.add_argument("--role", choices=ROLES, default="doctor")
     p.add_argument("--file", default=DEFAULT_FILE)
     a = p.parse_args()
     store = UserStore(a.file)
