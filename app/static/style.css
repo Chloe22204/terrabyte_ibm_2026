@@ -252,6 +252,81 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
   .system form.inline { margin-left: 0; }
 }
 
+/* ---------------------------------------------------------------- motion (pure CSS, after Magic UI)
+   Everything plays once on page load, except the login beam. All of it is off for "reduce motion". */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 1. Number ticker: worklist counts roll up like an odometer */
+.ticker { display: inline-flex; }
+.roll { display: inline-block; height: 1.1em; line-height: 1.1em; overflow: hidden; vertical-align: top; }
+.strip { display: block; animation: roll 1.2s cubic-bezier(0.2, 0.75, 0.2, 1) backwards; }
+.strip span { display: block; height: 1.1em; }
+.d1 .strip { transform: translateY(-1.1em); }
+.d2 .strip { transform: translateY(-2.2em); }
+.d3 .strip { transform: translateY(-3.3em); }
+.d4 .strip { transform: translateY(-4.4em); }
+.d5 .strip { transform: translateY(-5.5em); }
+.d6 .strip { transform: translateY(-6.6em); }
+.d7 .strip { transform: translateY(-7.7em); }
+.d8 .strip { transform: translateY(-8.8em); }
+.d9 .strip { transform: translateY(-9.9em); }
+@keyframes roll { from { transform: translateY(0); } }
+.summary .stat:nth-child(2) .strip { animation-delay: 0.08s; }
+.summary .stat:nth-child(3) .strip { animation-delay: 0.16s; }
+.summary .stat:nth-child(4) .strip { animation-delay: 0.24s; }
+.summary .stat:nth-child(5) .strip { animation-delay: 0.32s; }
+
+/* 2. Animated beam: data flows between the steps, all inside one LinuxONE box (login page) */
+.login-wrap { display: grid; grid-template-columns: 400px 360px; gap: var(--s6); justify-content: center;
+  align-items: center; margin: var(--s6) auto; position: relative; isolation: isolate; }
+.login-wrap .login { margin: 0; }
+.beam-diagram { margin: 0; }
+.beam-diagram svg { width: 100%; height: auto; display: block; }
+.beam-diagram .box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.beam-diagram .box-label { fill: var(--accent); font-size: 13px; font-weight: 700; }
+.beam-diagram .node rect { fill: var(--surface); stroke: var(--rule-strong); }
+.beam-diagram .node.out rect { stroke: var(--accent); stroke-width: 1.5; }
+.beam-diagram .node text { fill: var(--text); font-size: 13px; font-weight: 600; text-anchor: middle; }
+.beam-diagram .wire { fill: none; stroke: var(--rule-strong); stroke-width: 1.5; }
+.beam-diagram .beam { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 22 160; stroke-dashoffset: 182; animation: beam 2.7s linear infinite; }
+.beam-diagram .b2 { animation-delay: 0.9s; }
+.beam-diagram .b3 { animation-delay: 1.8s; }
+@keyframes beam { from { stroke-dashoffset: 182; } 40%, to { stroke-dashoffset: 0; } }
+.beam-diagram figcaption { margin-top: var(--s3); font-size: 0.875rem; color: var(--muted); text-align: center; }
+@media (max-width: 860px) { .login-wrap { grid-template-columns: minmax(0, 400px); } }
+
+/* 3. Blur fade: patient-page cards settle in one after another */
+@keyframes blurfade { from { opacity: 0; filter: blur(6px); transform: translateY(8px); } }
+.decision, .grid > .card, #briefing, #why { animation: blurfade 0.5s ease-out backwards; }
+.grid > .card:nth-child(1) { animation-delay: 0.06s; }
+.grid > .card:nth-child(2) { animation-delay: 0.12s; }
+.grid > .card:nth-child(3) { animation-delay: 0.18s; }
+.grid > .card:nth-child(4) { animation-delay: 0.24s; }
+#briefing { animation-delay: 0.3s; }
+#why { animation-delay: 0.36s; }
+
+/* 4. Shimmer: one sweep of light across the Granite button on load, again on hover */
+button.shimmer { position: relative; overflow: hidden; }
+button.shimmer::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  transform: translateX(-100%); animation: shimmer 1.4s ease-in-out 0.8s both; }
+button.shimmer:hover::after { animation: shimmer-again 1s ease-in-out both; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+@keyframes shimmer-again { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* 5. Dot pattern: faint dots behind the login card, fading out towards the edges */
+.login-page main { position: relative; }
+.login-page main::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(var(--rule-strong) 1.2px, transparent 1.6px); background-size: 20px 20px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%);
+  mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+  .beam-diagram .beam { display: none; }
+}
+
 /* printable one-page prep sheet */
 @media print {
   .topbar, footer, form, .back, .pagehead .mode, .grid, .decision, #why, details, .sheetmeta .muted { display: none !important; }

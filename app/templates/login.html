@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Sign in{% endblock %}
+{% block body_class %}login-page{% endblock %}
 {% block content %}
+<div class="login-wrap">
 <section class="login card">
   <p class="product">Time<span>To</span>Talk</p>
   <p class="tagline">Timely advance care planning for seriously ill patients</p>
@@ -18,4 +20,25 @@
   {% set plat = platform_info() %}
   <p class="runs">{% if plat.linuxone %}Runs entirely on IBM LinuxONE{% else %}Running on {{ plat.machine }} (not LinuxONE){% endif %}</p>
 </section>
+
+<figure class="beam-diagram">
+  <svg viewBox="0 0 360 300" role="img" aria-labelledby="beam-title">
+    <title id="beam-title">Patient record, risk models, IBM Granite and the prep sheet all run inside one IBM LinuxONE server</title>
+    <rect class="box" x="10" y="10" width="340" height="280" rx="14"/>
+    <text class="box-label" x="28" y="36">IBM LinuxONE</text>
+    <path class="wire" d="M290 81 C334 81 334 141 290 141"/>
+    <path class="wire" d="M70 141 C26 141 26 201 70 201"/>
+    <path class="wire" d="M290 201 C334 201 334 261 290 261"/>
+    <path class="beam b1" d="M290 81 C334 81 334 141 290 141"/>
+    <path class="beam b2" d="M70 141 C26 141 26 201 70 201"/>
+    <path class="beam b3" d="M290 201 C334 201 334 261 290 261"/>
+    <g class="node"><rect x="70" y="63" width="220" height="36" rx="8"/><text x="180" y="86">Patient record</text></g>
+    <g class="node"><rect x="70" y="123" width="220" height="36" rx="8"/><text x="180" y="146">Risk models</text></g>
+    <g class="node"><rect x="70" y="183" width="220" height="36" rx="8"/><text x="180" y="206">IBM Granite (local LLM)</text></g>
+    <g class="node out"><rect x="70" y="243" width="220" height="36" rx="8"/><text x="180" y="266">Conversation prep sheet</text></g>
+  </svg>
+  <figcaption>Patient data, the risk models and the language model stay on one server.
+    Nothing is sent to an outside service.</figcaption>
+</figure>
+</div>
 {% endblock %}
