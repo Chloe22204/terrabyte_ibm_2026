@@ -1,8 +1,4 @@
 {% extends "base.html" %}
-{# number ticker: each digit is a 0-9 strip that CSS rolls into place (no JavaScript, no inline styles) #}
-{% macro ticker(n) -%}
-<span class="ticker" aria-hidden="true">{% for ch in "{:,}".format(n) %}{% if ch.isdigit() %}<span class="roll d{{ ch }}"><span class="strip">{% for i in range(10) %}<span>{{ i }}</span>{% endfor %}</span></span>{% else %}<span>{{ ch }}</span>{% endif %}{% endfor %}</span><span class="sr">{{ n }}</span>
-{%- endmacro %}
 {% block title %}Worklist{% endblock %}
 {% block content %}
 {% set plat = platform_info() %}
@@ -44,12 +40,11 @@
 <div class="summary">
   {% for d in decisions %}
   <a class="stat {{ info[d][0] }}{% if decision == d %} active{% endif %}" href="/?decision={{ d | urlencode }}">
-    <span class="num">{{ ticker(counts[d]) }}</span><span class="lbl">{{ d }}</span>
+    <span class="num">{{ counts[d] }}</span><span class="lbl">{{ d }}</span>
   </a>
   {% endfor %}
   <a class="stat disc{% if gap %} active{% endif %}" href="/?gap=1">
-    <span class="num">{{ ticker(n_gap) }}</span><span class="lbl">Doctors and AI differ</span>
-    <span class="sub">Doctor's estimate ≥{{ (gap_threshold * 100) | round | int }} points more favourable than the AI's</span>
+    <span class="num">{{ n_gap }}</span><span class="lbl">Doctors and AI differ</span>
   </a>
 </div>
 

@@ -142,9 +142,6 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0; mar
 .stat .num { font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--tier); letter-spacing: -0.02em; }
 .stat .lbl { display: inline-flex; align-items: center; gap: 7px; font-size: 0.875rem; font-weight: 600; color: var(--text); }
 .stat .lbl::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tier-dot); flex: none; }
-.stat .sub { font-size: 0.75rem; color: var(--muted); line-height: 1.35; margin-top: var(--s1); }
-.summary { align-items: start; }
-.stat { min-height: 96px; }
 .stat.active { border-color: var(--tier); }
 
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3); margin-bottom: var(--s2); }
@@ -272,27 +269,6 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 
 /* ---------------------------------------------------------------- motion (pure CSS, after Magic UI)
    Everything plays once on page load, except the login beam. All of it is off for "reduce motion". */
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-/* 1. Number ticker: worklist counts roll up like an odometer */
-.ticker { display: inline-flex; }
-.roll { display: inline-block; height: 1.1em; line-height: 1.1em; overflow: hidden; vertical-align: top; }
-.strip { display: block; animation: roll 1.2s cubic-bezier(0.2, 0.75, 0.2, 1) backwards; }
-.strip span { display: block; height: 1.1em; }
-.d1 .strip { transform: translateY(-1.1em); }
-.d2 .strip { transform: translateY(-2.2em); }
-.d3 .strip { transform: translateY(-3.3em); }
-.d4 .strip { transform: translateY(-4.4em); }
-.d5 .strip { transform: translateY(-5.5em); }
-.d6 .strip { transform: translateY(-6.6em); }
-.d7 .strip { transform: translateY(-7.7em); }
-.d8 .strip { transform: translateY(-8.8em); }
-.d9 .strip { transform: translateY(-9.9em); }
-@keyframes roll { from { transform: translateY(0); } }
-.summary .stat:nth-child(2) .strip { animation-delay: 0.08s; }
-.summary .stat:nth-child(3) .strip { animation-delay: 0.16s; }
-.summary .stat:nth-child(4) .strip { animation-delay: 0.24s; }
-.summary .stat:nth-child(5) .strip { animation-delay: 0.32s; }
 
 /* 2. Animated beam: data flows between the steps, all inside one LinuxONE box (login page) */
 .login-wrap { display: grid; grid-template-columns: 400px 360px; gap: var(--s6); justify-content: center;
