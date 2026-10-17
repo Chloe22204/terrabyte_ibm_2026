@@ -7,8 +7,9 @@
 <title>{% block title %}TimeToTalk{% endblock %} · TimeToTalk</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="data:,">
+{% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 <header class="topbar">
   <a class="brand" href="/">Time<span>To</span>Talk</a>
   {% set plat = platform_info() %}
